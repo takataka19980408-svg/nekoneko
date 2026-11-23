@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#fff7f1">
-<meta name="description" content="地球上の約10億匹の猫から、ガチリアル確率で子猫に生まれ変わり、猫生を一歩ずつ歩む体験型シミュレーター。野生のネコ科46種、純血種74種、世界78カ国。">
+<meta name="description" content="地球上の約10億匹の猫から、ガチリアル確率で子猫に生まれ変わり、猫生を一歩ずつ歩む体験型シミュレーター。動く可愛い猫イラスト、成長、そして拾われる体験。野生のネコ科46種、純血種74種、世界78カ国。">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>世界猫生ガチャ｜子猫で生まれて、猫生を歩む</title>
@@ -77,6 +77,21 @@
         <button class="skip-btn" id="skipBtn">⏩ 一気に最期まで見る</button>
       </div>
 
+      <div class="stage" id="catStage">
+        <div class="stage-scene scene--home" id="stageScene" aria-hidden="true"></div>
+        <div class="stage-glow" aria-hidden="true"></div>
+        <div class="particles" id="stageParticles" aria-hidden="true"></div>
+        <div class="stage-top">
+          <span class="stage-age" id="stageAge">生まれた日</span>
+          <span class="stage-stage" id="stageStage">子猫</span>
+          <span class="stage-place" id="stagePlace">あたたかいおうち</span>
+        </div>
+        <div class="cat-actor" id="catActor" role="button" tabindex="0" aria-label="猫をタップして反応を見る"></div>
+        <div class="stage-toast" id="stageToast" aria-live="polite"></div>
+        <div class="stats" id="stats"></div>
+      </div>
+      <p class="tap-hint" id="tapHint">🐾 猫をタップすると反応するよ</p>
+
       <div class="page-wrap" id="pageWrap"></div>
 
       <button class="walk-btn" id="walkBtn">
@@ -135,7 +150,7 @@
 <script src="js/data-countries.js"></script>
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
-<script src="js/svgcat.js"></script>
+<script src="js/catart.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

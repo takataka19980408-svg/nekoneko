@@ -1,22 +1,17 @@
 /* ============================================================
    世界猫生ガチャ — UI（子猫で生まれて、猫生を歩む）
+   猫はAI生成イラスト。待機中は呼吸、タップで跳ねる、
+   成長すると大きくなり、拾われると首輪がついて家に変わる。
    ============================================================ */
 (function (root) {
   'use strict';
 
   const D = root.CATGACHA_DATA;
   const E = root.CATGACHA;
-  const S = root.CATGACHA_SVG;
+  const A = root.CATART;
   const KEY = 'catgacha.dex.v1';
 
   const RARITY_JP = { N: 'ノーマル', R: 'レア', SR: 'スーパーレア', SSR: 'ダブルレア', UR: 'ウルトラレア' };
-  const RARITY_DESC = {
-    N: 'よく会える猫',
-    R: 'ちょっと珍しい猫',
-    SR: 'なかなか会えない猫',
-    SSR: '奇跡に近い猫',
-    UR: '地球上で数えるほど'
-  };
   const STAGE_JP = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
 
   /* ---------- 図鑑データ ---------- */
@@ -137,23 +132,25 @@
     return STAGE_JP[stage] || '';
   }
 
+  /* ページカード（イラストはステージ側に出るので、ここは物語だけ） */
   function stepCardHTML(cat, idx, picked) {
     const step = cat.story[idx];
     const isBirth = step.kind === 'birth';
     const isDeath = step.kind === 'death';
+    const isAdopt = step.kind === 'adopt';
     const pick = picked ? picked[idx] : undefined;
     return `
-    <article class="page${isBirth ? ' page--birth' : ''}${isDeath ? ' page--death' : ''}">
+    <article class="page${isBirth ? ' page--birth' : ''}${isDeath ? ' page--death' : ''}${isAdopt ? ' page--adopt' : ''}">
       <span class="page-tape" aria-hidden="true"></span>
       <div class="page-head">
         <span class="age-badge">${step.ageLabel}</span>
         <span class="stage-chip">${stageLabel(cat, step.stage)}</span>
         ${isBirth ? `<span class="rarity r-${cat.rarity}">${cat.rarity}</span>` : ''}
+        ${isAdopt ? '<span class="adopt-tag">🏡 家族に迎えられた</span>' : ''}
         <span class="page-no">${idx + 1}/${cat.story.length}</span>
       </div>
-      <div class="page-art">${S.render(cat, { stage: step.stage, eyes: isDeath ? 'closed' : undefined })}</div>
       ${isBirth ? `<p class="born-line">🌏 ${bornLine(cat)}</p>` : ''}
-      <h2 class="page-title">${isDeath ? '🌈 最期' : '【' + step.title + '】'}</h2>
+      <h2 class="page-title">${isDeath ? '🌈 最期' : isAdopt ? '🏡 拾われる' : '【' + step.title + '】'}</h2>
       <p class="page-text">${step.text}</p>
       ${isBirth ? traitsHTML(cat) : ''}
       ${step.choice ? choiceHTML(step, pick) : ''}
@@ -168,7 +165,7 @@
       const pick = picked ? picked[i] : undefined;
       const chosen = s.choice && pick != null ? s.choice.options[pick] : null;
       const text = chosen ? chosen.text : s.text;
-      const label = s.kind === 'birth' ? '生まれた日' : s.ageLabel;
+      const label = s.kind === 'birth' ? '生まれた日' : s.kind === 'adopt' ? '拾われた日' : s.ageLabel;
       const tilt = (i % 2 === 0 ? -1.1 : 1.1);
       out += `<div class="note note--${s.kind}" style="--tilt:${tilt}deg">
         <span class="note-age">${label}</span>
@@ -193,6 +190,7 @@
       <div class="finale-age"><span class="finale-prefix">${prefix}</span><b>${num}</b><span class="finale-unit">${unit}</span><span class="finale-suffix">享年</span></div>
       <p class="finale-caption">${cat.caption}</p>
       <div class="finale-who"><span class="finale-flag">${cat.region.flag}</span>${cat.name} ／ ${subject}</div>
+      ${cat.adopted ? '<div class="finale-collar">🔔 拾われて、家族の猫になった子</div>' : ''}
     </div>
     <div class="prob-box">
       <div class="prob-line"><span>この猫に生まれる確率</span><b>${E.formatProb(cat.probability)}</b></div>
@@ -210,9 +208,10 @@
   function shareText(cat) {
     const lines = [
       `【世界猫生ガチャ】${cat.rarity}｜${cat.name}`,
-      `${cat.region.flag} ${placeText(cat)}の${cat.statusLabel}・${cat.speciesName}／享年${ageText(cat.ageYears)}`,
-      `確率 ${E.formatProb(cat.probability)}（${E.formatOneIn(cat.probability)}）`
+      `${cat.region.flag} ${placeText(cat)}の${cat.statusLabel}・${cat.speciesName}／享年${ageText(cat.ageYears)}`
     ];
+    if (cat.adopted) lines.push('🏡 途中で人に拾われて、家族の猫になった');
+    lines.push(`確率 ${E.formatProb(cat.probability)}（${E.formatOneIn(cat.probability)}）`);
     cat.mutations.forEach(m => lines.push('✦ ' + m.name));
     lines.push('#世界猫生ガチャ');
     return lines.join('\n');
@@ -283,7 +282,10 @@
     if (typeof document === 'undefined') return;
 
     const $ = id => document.getElementById(id);
-    const state = { dex: loadDex(), current: null, rolling: false, tab: 'species', step: 0, picked: {}, recorded: false };
+    const state = {
+      dex: loadDex(), current: null, rolling: false, tab: 'species', step: 0,
+      picked: {}, recorded: false, shownStage: null, shownScene: null, taps: 0, adopted: false
+    };
 
     const el = {
       home: $('homeScreen'), story: $('storyScreen'),
@@ -294,17 +296,21 @@
       statTotal: $('statTotal'), statBest: $('statBest'), statRate: $('statRate'),
       storyProgress: $('storyProgress'), pageWrap: $('pageWrap'), walkBtn: $('walkBtn'),
       walkSub: $('walkSub'), skipBtn: $('skipBtn'), finale: $('finale'), finaleBody: $('finaleBody'),
-      memories: $('memories'), memoryList: $('memoryList')
+      memories: $('memories'), memoryList: $('memoryList'),
+      catStage: $('catStage'), stageScene: $('stageScene'), stageParticles: $('stageParticles'),
+      catActor: $('catActor'), stageToast: $('stageToast'), stats: $('stats'),
+      stageAge: $('stageAge'), stageStage: $('stageStage'), stagePlace: $('stagePlace'),
+      tapHint: $('tapHint')
     };
 
-    /* --- 初期表示 --- */
+    /* --- 初期表示（ホームの子猫） --- */
     let preview = null;
     for (let i = 0; i < 1200; i++) {
       const c = E.rollCat((i * 7919 + 13) >>> 0);
       if (c.speciesKey === 'coat:kijitora' && c.route === 'owned') { preview = c; break; }
     }
     if (!preview) preview = E.rollCat(1);
-    el.preview.innerHTML = S.render(preview, { stage: 'kitten' });
+    el.preview.innerHTML = A.heroHTML(preview);
 
     function refreshStats() {
       const d = state.dex;
@@ -315,6 +321,103 @@
       el.dexBadge.textContent = got;
     }
     refreshStats();
+
+    /* --- ステージ（背景・猫・ステータス） --- */
+    function toast(text, tone) {
+      el.stageToast.textContent = text;
+      el.stageToast.className = 'stage-toast is-on ' + (tone ? 'is-' + tone : '');
+      const t = root.setTimeout || setTimeout;
+      t(function () { el.stageToast.className = 'stage-toast'; }, 2200);
+    }
+
+    function paintScene(cat, idx, dead) {
+      const key = dead ? 'finale' : A.sceneKeyFor(cat, idx);
+      if (state.shownScene !== key) {
+        state.shownScene = key;
+        el.stageScene.className = 'stage-scene scene--' + key;
+        el.stageParticles.innerHTML = A.particlesHTML(cat, idx, dead);
+      }
+    }
+
+    function mountStage(cat) {
+      state.shownStage = 'kitten';
+      state.shownScene = null;
+      state.adopted = false;
+      el.catActor.innerHTML = A.actorHTML(cat, { stage: 'kitten' });
+      el.catStage.classList.remove('is-finale');
+      el.stats.innerHTML = A.statsHTML(cat, 0);
+      el.tapHint.hidden = false;
+    }
+
+    function updateStage(cat, idx) {
+      const step = cat.story[idx];
+      const dead = step.kind === 'death';
+      const stage = step.stage;
+
+      const art = document.getElementById('catArt');
+      if (art) {
+        art.classList.toggle('is-kitten', stage === 'kitten');
+        art.classList.toggle('is-adult', stage !== 'kitten');
+        art.classList.toggle('is-senior', stage === 'senior');
+        art.classList.toggle('is-hop', false);
+      }
+      const imgK = document.getElementById('catImgKitten');
+      const imgA = document.getElementById('catImgAdult');
+      if (imgK && imgA) {
+        if (stage === 'kitten') { imgK.classList.add('is-on'); imgA.classList.remove('is-on'); }
+        else { imgA.classList.add('is-on'); imgK.classList.remove('is-on'); }
+      }
+
+      if (state.shownStage === 'kitten' && stage !== 'kitten') {
+        if (art) {
+          art.classList.remove('is-growing');
+          void art.offsetWidth;
+          art.classList.add('is-growing');
+        }
+        toast(stage === 'senior' ? '🐾 シニアになった' : '✨ すくすく成長した！', 'grow');
+      } else if (state.shownStage === 'adult' && stage === 'senior') {
+        toast('🐾 シニアになった', 'grow');
+      }
+      state.shownStage = stage;
+
+      if (cat.adoptIndex != null && idx >= cat.adoptIndex) {
+        const collar = document.getElementById('collarBadge');
+        if (collar) collar.classList.add('is-on');
+        if (!state.adopted) {
+          state.adopted = true;
+          toast('🏡 家族に迎えられた！', 'adopt');
+        }
+      }
+
+      paintScene(cat, idx, dead);
+      el.stats.innerHTML = A.statsHTML(cat, idx);
+      el.stageAge.textContent = step.ageLabel;
+      el.stageStage.textContent = stageLabel(cat, stage);
+      el.stagePlace.textContent = A.sceneLabel(A.sceneKeyFor(cat, idx));
+      el.catStage.classList.toggle('is-finale', dead);
+      if (dead) el.tapHint.hidden = true;
+    }
+
+    /* --- 猫をタップすると跳ねる --- */
+    function tapCat() {
+      const cat = state.current;
+      if (!cat) return;
+      const art = document.getElementById('catArt') || el.catActor;
+      if (art.classList) {
+        art.classList.remove('is-hop');
+        void art.offsetWidth;
+        art.classList.add('is-hop');
+      }
+      state.taps += 1;
+      const b = A.bubbleFor(cat.seed || 1, state.taps);
+      const layer = document.getElementById('bubbleLayer');
+      if (layer) {
+        layer.innerHTML = `<span class="bubble" style="left:${30 + Math.round((state.taps * 37) % 40)}%"><b>${b.emoji}</b>${b.text}</span>`;
+        const t = root.setTimeout || setTimeout;
+        t(function () { if (layer) layer.innerHTML = ''; }, 1700);
+      }
+    }
+    el.catActor.addEventListener('click', tapCat);
 
     /* --- ストーリー --- */
     function renderStory() {
@@ -327,6 +430,7 @@
       void el.pageWrap.offsetWidth;
       el.pageWrap.classList.add('turn');
       el.storyProgress.innerHTML = progressHTML(cat, idx);
+      updateStage(cat, idx);
 
       const isDeath = step.kind === 'death';
       const needChoice = !!step.choice && state.picked[idx] == null;
@@ -354,9 +458,9 @@
       state.step = 0;
       state.picked = {};
       state.recorded = false;
-      el.preview.innerHTML = S.render(cat, { stage: E.stageForAge(cat.ageYears) });
       el.home.hidden = true;
       el.story.hidden = false;
+      mountStage(cat);
       renderStory();
     }
 
@@ -394,6 +498,8 @@
       el.story.hidden = true;
       el.home.hidden = false;
       state.current = null;
+      state.shownStage = null;
+      state.shownScene = null;
       if (root.scrollTo) root.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -495,6 +601,7 @@
     root.CATAPP.roll = roll;
     root.CATAPP.openDex = openDex;
     root.CATAPP.state = state;
+    root.CATAPP.tapCat = tapCat;
   }
 
   root.CATAPP = Object.assign(root.CATAPP || {}, {

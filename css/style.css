@@ -269,9 +269,40 @@ body::before {
   box-shadow: 0 4px 10px rgba(80, 50, 40, .12);
 }
 
-.preview { width: 100%; height: 100%; }
+.preview { width: 100%; height: 100%; position: relative; }
 .preview svg { display: block; width: 100%; height: 100%; }
-.preview svg .cat-svg { animation: bob 4.6s ease-in-out infinite; }
+
+/* ---------- ホームの子猫（AIイラスト） ---------- */
+.hero-cat {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(60% 50% at 50% 34%, rgba(255, 255, 255, .9) 0%, rgba(255, 255, 255, 0) 70%),
+    linear-gradient(170deg, #fff6e8 0%, #ffe7cf 62%, #f4d4b6 100%);
+}
+.hero-img {
+  position: relative;
+  z-index: 2;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 14px rgba(120, 80, 60, .18));
+  animation: breathe 4.2s ease-in-out infinite;
+  transform-origin: 50% 88%;
+}
+.hero-shadow {
+  position: absolute;
+  bottom: 7%;
+  width: 42%;
+  height: 7%;
+  border-radius: 50%;
+  background: rgba(110, 70, 45, .16);
+  filter: blur(5px);
+  z-index: 1;
+}
 @keyframes bob {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-3px) scale(1.004); }
@@ -1163,6 +1194,551 @@ body::before {
   animation: rainbow 3.4s linear infinite;
 }
 @keyframes rainbow { to { background-position: 300% 0; } }
+
+/* ============================================================
+   猫ステージ（背景・動く猫・ステータス）
+   ============================================================ */
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 10 / 11.4;
+  min-height: 320px;
+  margin: 0 0 12px;
+  border-radius: 32px;
+  overflow: hidden;
+  border: 5px solid #fff;
+  box-shadow: 0 18px 38px rgba(198, 141, 120, .22);
+  isolation: isolate;
+  background: #f7e7d2;
+}
+
+/* --- 背景シーン --- */
+.stage-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  transition: background .8s ease;
+}
+.stage-scene::before,
+.stage-scene::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.scene--home { background: linear-gradient(180deg, #fff7e9 0%, #ffe9cf 58%, #f3d2b0 100%); }
+.scene--home::before {
+  right: 8%;
+  top: 9%;
+  width: 34%;
+  height: 30%;
+  border-radius: 12px;
+  border: 4px solid #e6c39c;
+  background:
+    linear-gradient(90deg, transparent 47%, #e6c39c 47% 52%, transparent 52%),
+    linear-gradient(180deg, #bcdcf0 0%, #e8f4fb 70%, #f7e6c8 100%);
+  box-shadow: inset 0 0 0 3px #fff9ee;
+}
+.scene--home::after {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34%;
+  background:
+    linear-gradient(180deg, rgba(214, 172, 129, .55) 0%, rgba(214, 172, 129, 0) 12%),
+    repeating-linear-gradient(90deg, #e9c9a4 0 44px, #e2be95 44px 46px);
+  opacity: .85;
+}
+
+.scene--alley { background: linear-gradient(180deg, #26324a 0%, #33405c 46%, #4a5471 100%); }
+.scene--alley::before {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 62%;
+  background:
+    linear-gradient(90deg, #2b3549 0 30%, transparent 30% 70%, #2b3549 70% 100%),
+    repeating-linear-gradient(180deg, transparent 0 22px, rgba(255, 255, 255, .04) 22px 24px);
+}
+.scene--alley::after {
+  left: 58%;
+  top: 12%;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 226, 150, .55) 0%, rgba(255, 226, 150, 0) 70%);
+  box-shadow: -96px 150px 0 -30px rgba(255, 226, 150, .16);
+}
+
+.scene--village { background: linear-gradient(180deg, #ffe6c2 0%, #f0c493 52%, #c99a6c 100%); }
+.scene--village::before {
+  left: 0;
+  right: 0;
+  bottom: 26%;
+  height: 26%;
+  background: linear-gradient(180deg, #b98a5e 0 62%, #a9784f 62% 100%);
+  clip-path: polygon(0 100%, 0 42%, 12% 30%, 24% 46%, 36% 22%, 48% 44%, 60% 28%, 74% 48%, 88% 26%, 100% 44%, 100% 100%);
+  opacity: .55;
+}
+
+.scene--snow { background: linear-gradient(180deg, #dbeaf6 0%, #eef6fc 55%, #fdfdff 100%); }
+.scene--snow::before {
+  left: 0;
+  right: 0;
+  bottom: 22%;
+  height: 30%;
+  background: #e7f1fa;
+  clip-path: polygon(0 100%, 0 64%, 18% 28%, 32% 56%, 46% 18%, 62% 58%, 78% 32%, 100% 66%, 100% 100%);
+  opacity: .85;
+}
+.scene--snow::after {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24%;
+  background: linear-gradient(180deg, #ffffff, #edf5fc);
+}
+
+.scene--forest { background: linear-gradient(180deg, #e9f0d8 0%, #cfe0b4 48%, #a9c087 100%); }
+.scene--forest::before {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 72%;
+  background: repeating-linear-gradient(90deg, rgba(110, 88, 60, .28) 0 10px, transparent 10px 74px),
+    radial-gradient(50% 40% at 22% 18%, rgba(120, 160, 96, .5), transparent 70%),
+    radial-gradient(46% 38% at 78% 26%, rgba(96, 140, 84, .45), transparent 70%);
+}
+
+.scene--jungle { background: linear-gradient(180deg, #cfe6b4 0%, #8cc487 46%, #4f8558 100%); }
+.scene--jungle::before {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 80%;
+  background:
+    radial-gradient(34% 26% at 12% 14%, rgba(46, 104, 62, .55), transparent 70%),
+    radial-gradient(30% 24% at 88% 8%, rgba(46, 104, 62, .5), transparent 70%),
+    radial-gradient(24% 20% at 40% 30%, rgba(255, 255, 255, .28), transparent 70%);
+}
+
+.scene--savanna { background: linear-gradient(180deg, #ffe1ae 0%, #ffcb85 48%, #dcaa63 100%); }
+.scene--savanna::before {
+  right: 12%;
+  top: 10%;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff5cf 0%, rgba(255, 235, 170, .35) 60%, rgba(255, 235, 170, 0) 100%);
+}
+.scene--savanna::after {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30%;
+  background: linear-gradient(180deg, #d9a45d 0%, #c48f4c 100%);
+  clip-path: polygon(0 26%, 18% 14%, 40% 22%, 62% 10%, 82% 20%, 100% 12%, 100% 100%, 0 100%);
+  opacity: .75;
+}
+
+.scene--desert { background: linear-gradient(180deg, #ffeccb 0%, #f7d49a 55%, #e2b877 100%); }
+.scene--desert::before {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34%;
+  background: #e3ba7d;
+  clip-path: polygon(0 52%, 26% 30%, 52% 48%, 76% 24%, 100% 44%, 100% 100%, 0 100%);
+}
+.scene--desert::after {
+  right: 14%;
+  top: 12%;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff8dd, rgba(255, 236, 176, .4) 70%, transparent 100%);
+}
+
+.scene--mountain { background: linear-gradient(180deg, #dbe6ee 0%, #c3d4e0 52%, #a8bccb 100%); }
+.scene--mountain::before {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 58%;
+  background: linear-gradient(180deg, #ffffff 0 22%, #b8c8d6 22% 100%);
+  clip-path: polygon(0 100%, 0 62%, 20% 20%, 34% 52%, 54% 6%, 72% 48%, 88% 26%, 100% 58%, 100% 100%);
+  opacity: .9;
+}
+
+.scene--island { background: linear-gradient(180deg, #cbeef2 0%, #a5e0e6 52%, #79c6d4 100%); }
+.scene--island::before {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(105, 186, 200, .75));
+}
+.scene--island::after {
+  right: 16%;
+  top: 14%;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fffbe6, rgba(255, 247, 205, .35) 70%, transparent 100%);
+}
+
+.scene--coast { background: linear-gradient(180deg, #e8f4fb 0%, #bfe0f2 46%, #8fc7e4 100%); }
+.scene--coast::before {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 38%;
+  background: linear-gradient(180deg, #9fd3ea 0%, #6fb3d8 100%);
+  clip-path: polygon(0 22%, 100% 10%, 100% 100%, 0 100%);
+}
+
+.scene--zoo { background: linear-gradient(180deg, #eef2f0 0%, #dce6df 60%, #c3d2c8 100%); }
+.scene--zoo::before {
+  left: 0;
+  right: 0;
+  bottom: 24%;
+  height: 34%;
+  background: repeating-linear-gradient(90deg, rgba(120, 138, 126, .5) 0 5px, transparent 5px 28px);
+}
+
+.scene--temple { background: linear-gradient(180deg, #ffe7d1 0%, #f4c9a9 52%, #d9a583 100%); }
+.scene--temple::before {
+  left: 0;
+  right: 0;
+  bottom: 26%;
+  height: 22%;
+  background: #b25b43;
+  clip-path: polygon(0 46%, 50% 0, 100% 46%, 92% 46%, 92% 100%, 8% 100%, 8% 46%);
+  opacity: .38;
+}
+
+.scene--finale {
+  background: linear-gradient(180deg, #fff6e2 0%, #ffe6ef 34%, #e6f3ff 66%, #f3e9ff 100%);
+}
+.scene--finale::before {
+  inset: auto -20% 0 -20%;
+  height: 80%;
+  border-radius: 50% 50% 0 0;
+  background: conic-gradient(from 250deg at 50% 100%, #ff9fb2, #ffd98e, #cfeea8, #b7dcf5, #c0a3e6, #ff9fb2);
+  opacity: .16;
+}
+
+.stage-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(50% 42% at 50% 74%, rgba(255, 255, 255, .75) 0%, rgba(255, 255, 255, 0) 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, .2) 0%, rgba(255, 255, 255, 0) 30%);
+}
+
+/* --- 季節のパーティクル --- */
+.particles { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.particles span {
+  position: absolute;
+  top: -10%;
+  font-size: var(--size, 14px);
+  opacity: 0;
+  animation: drift var(--dur, 9s) linear infinite;
+  animation-delay: var(--delay, 0s);
+  will-change: transform, opacity;
+}
+@keyframes drift {
+  0% { transform: translate3d(0, -12%, 0) rotate(0deg); opacity: 0; }
+  12% { opacity: .95; }
+  100% { transform: translate3d(var(--drift, 20px), 640px, 0) rotate(160deg); opacity: 0; }
+}
+
+/* --- ステージ上部のラベル --- */
+.stage-top {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.stage-age,
+.stage-stage,
+.stage-place {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .86);
+  color: var(--ink-2);
+  box-shadow: 0 3px 8px rgba(110, 70, 45, .12);
+}
+.stage-age { color: var(--pink-3); }
+.stage-place { margin-left: auto; color: #6f8f7d; background: rgba(255, 255, 255, .8); }
+
+/* --- 猫本体 --- */
+.cat-actor {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.cat-art {
+  position: absolute;
+  left: 50%;
+  bottom: 15%;
+  width: 76%;
+  max-width: 300px;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  animation: breathe 4.2s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+@keyframes breathe {
+  0%, 100% { transform: translate(var(--cat-tx, 0), 0) scale(1); }
+  50% { transform: translate(var(--cat-tx, 0), -5px) scale(1.016, 1.004); }
+}
+.cat-art { --cat-tx: -50%; }
+.cat-art.is-hop { animation: hop .78s cubic-bezier(.3, .8, .4, 1); }
+@keyframes hop {
+  0% { transform: translate(-50%, 0) scale(1); }
+  26% { transform: translate(-50%, -30px) scale(1.03, .95); }
+  52% { transform: translate(-50%, 0) scale(.96, 1.05); }
+  72% { transform: translate(-50%, -9px) scale(1.01, .99); }
+  100% { transform: translate(-50%, 0) scale(1); }
+}
+.cat-art.is-growing { animation: growPop 1.25s cubic-bezier(.2, .8, .3, 1.1); }
+@keyframes growPop {
+  0% { transform: translate(-50%, 0) scale(.9); filter: brightness(1.3); }
+  40% { transform: translate(-50%, -14px) scale(1.05); filter: brightness(1.15); }
+  100% { transform: translate(-50%, 0) scale(1); filter: none; }
+}
+
+.cat-scale {
+  position: absolute;
+  inset: 0;
+  transform: scale(var(--cat-scale, .76));
+  transform-origin: 50% 100%;
+  transition: transform .95s cubic-bezier(.2, .8, .3, 1.05);
+}
+.cat-art.is-kitten { --cat-scale: .74; }
+.cat-art.is-adult { --cat-scale: 1; }
+.cat-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity .55s ease, transform .8s ease;
+  filter: drop-shadow(0 14px 10px rgba(90, 60, 40, .16));
+  pointer-events: none;
+}
+.cat-img.is-on { opacity: 1; }
+.cat-art.is-senior .cat-img.is-on { filter: drop-shadow(0 14px 10px rgba(90, 60, 40, .16)) saturate(.72) brightness(1.06); }
+
+/* 拾われた証の鈴付き首輪 */
+.collar {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44%;
+  transform: translate(-50%, -50%) scale(.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .45s ease, transform .6s cubic-bezier(.2, .9, .3, 1.4);
+  filter: drop-shadow(0 2px 3px rgba(90, 50, 30, .22));
+}
+.collar.is-on { opacity: 1; transform: translate(-50%, -50%) scale(1); animation: collarSpark .9s ease; }
+.collar svg { display: block; width: 100%; height: auto; }
+.collar-spark {
+  position: absolute;
+  right: -6%;
+  top: -26%;
+  font-size: 15px;
+  opacity: 0;
+}
+.collar.is-on .collar-spark { animation: sparkle 1.4s .15s ease both; }
+@keyframes collarSpark {
+  0% { filter: drop-shadow(0 0 0 rgba(255, 220, 120, 0)); }
+  45% { filter: drop-shadow(0 0 10px rgba(255, 220, 120, .95)); }
+  100% { filter: drop-shadow(0 2px 3px rgba(90, 50, 30, .22)); }
+}
+@keyframes sparkle {
+  0% { opacity: 0; transform: scale(.4) rotate(-20deg); }
+  35% { opacity: 1; transform: scale(1.15) rotate(8deg); }
+  100% { opacity: 0; transform: scale(.9) rotate(20deg); }
+}
+
+.growth-spark { position: absolute; left: 50%; top: 6%; font-size: 26px; opacity: 0; transform: translateX(-50%); }
+.cat-art.is-growing .growth-spark { animation: sparkle 1.3s ease both; }
+
+/* タップで浮かぶ吹き出し */
+.bubble-layer { position: absolute; inset: 0; pointer-events: none; }
+.bubble {
+  position: absolute;
+  top: 16%;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 2px solid #ffd3dd;
+  border-radius: 16px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--pink-3);
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(198, 141, 120, .22);
+  animation: floatUp 1.7s ease-out forwards;
+}
+.bubble b { margin-right: 3px; }
+@keyframes floatUp {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); }
+  22% { opacity: 1; transform: translate(-50%, -6px) scale(1.02); }
+  100% { opacity: 0; transform: translate(-50%, -74px) scale(1); }
+}
+
+/* ステージ内のお知らせ */
+.stage-toast {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  z-index: 7;
+  transform: translate(-50%, 0) scale(.9);
+  opacity: 0;
+  pointer-events: none;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .95);
+  color: var(--pink-3);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  box-shadow: 0 10px 24px rgba(150, 100, 80, .24);
+  transition: opacity .3s ease, transform .3s ease;
+  white-space: nowrap;
+}
+.stage-toast.is-on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.stage-toast.is-adopt { color: #a1703a; }
+
+/* ミニステータス */
+.stats {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 9px;
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+}
+.stat {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 2px 3px;
+  padding: 6px 7px 7px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .84);
+  box-shadow: 0 5px 12px rgba(120, 80, 60, .14);
+}
+.stat-icon { font-size: 10px; line-height: 1; }
+.stat-name { font-size: 8.5px; font-weight: 800; color: var(--ink-2); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-value { font-size: 11px; font-weight: 800; color: var(--ink); line-height: 1; }
+.stat-bar { grid-column: 1 / -1; height: 4px; border-radius: 99px; background: #eee0d3; overflow: hidden; }
+.stat-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ffb3c1, #ef7898); transition: width .6s ease; }
+.stat--food .stat-bar i { background: linear-gradient(90deg, #ffd79a, #f2a94e); }
+.stat--luck .stat-bar i { background: linear-gradient(90deg, #bfe6cf, #7fc4a0); }
+.stat-delta {
+  position: absolute;
+  right: 4px;
+  top: -8px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(120, 80, 60, .16);
+  animation: deltaPop 1.6s ease both;
+}
+.stat-delta.is-up { color: #4d9a76; }
+.stat-delta.is-down { color: #d97a86; }
+@keyframes deltaPop {
+  0% { opacity: 0; transform: translateY(4px); }
+  20% { opacity: 1; transform: none; }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.tap-hint {
+  margin: -2px 0 12px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  color: var(--ink-3);
+  animation: hintPulse 2.8s ease-in-out infinite;
+}
+.tap-hint[hidden] { display: none; }
+@keyframes hintPulse { 0%, 100% { opacity: .55; } 50% { opacity: .95; } }
+
+/* フィナーレのステージ */
+.stage.is-finale .stage-scene { filter: saturate(.78) brightness(1.04); }
+.stage.is-finale::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    linear-gradient(105deg, rgba(255, 159, 178, .16), rgba(255, 217, 142, .16), rgba(168, 220, 201, .16), rgba(183, 220, 245, .18), rgba(192, 163, 230, .16)),
+    radial-gradient(circle at 50% 22%, rgba(255, 255, 255, .7), transparent 55%);
+  animation: finaleGlow 6s ease-in-out infinite;
+}
+@keyframes finaleGlow { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+
+/* 拾われたタグ */
+.adopt-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  color: #a1703a;
+  background: #fff2d9;
+  border-radius: 999px;
+  padding: 4px 9px;
+}
+.page--adopt { border-color: #ffe6bd; }
+.page--adopt .page-title { color: #b07a34; }
+.note--adopt { border-left-color: #ffd9a0; }
+.note--adopt .note-age { background: #fff2d9; color: #a1703a; }
+.finale-collar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: #fff3de;
+  color: #a1703a;
+  font-size: 11px;
+  font-weight: 800;
+}
 
 /* ---------- アニメーション抑制 ---------- */
 @media (prefers-reduced-motion: reduce) {

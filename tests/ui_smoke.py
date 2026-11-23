@@ -11,7 +11,7 @@ import quickjs
 ROOT = Path(__file__).resolve().parent.parent
 JS_FILES = [
     "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js",
-    "js/data.js", "js/engine.js", "js/svgcat.js",
+    "js/data.js", "js/engine.js", "js/catart.js",
 ]
 
 DOM_STUB = r"""
@@ -20,8 +20,12 @@ var __handlers = {};
 function El(id, cls){
   this.id = id; this._cls = cls || ''; this.hidden = false; this.innerHTML = ''; this.textContent = '';
   this.style = {}; this.dataset = {}; this.disabled = false; this.className = ''; this.offsetWidth = 400;
+  var set = {};
   this.classList = {
-    toggle: function(){}, add: function(){}, remove: function(){}, contains: function(){ return false; }
+    add: function(){ for (var i = 0; i < arguments.length; i++) set[arguments[i]] = true; },
+    remove: function(){ for (var i = 0; i < arguments.length; i++) delete set[arguments[i]]; },
+    toggle: function(c, on){ if (on === undefined) { if (set[c]) delete set[c]; else set[c] = true; } else if (on) set[c] = true; else delete set[c]; },
+    contains: function(c){ return !!set[c]; }
   };
 }
 El.prototype.addEventListener = function(ev, fn){
@@ -101,10 +105,88 @@ def main():
         print("[NG] ホーム画面が隠れていない")
         return 1
     card = ctx.eval("document.getElementById('pageWrap').innerHTML")
-    if len(card) < 800 or "page-title" not in card or "享年" in card:
+    if len(card) < 500 or "page-title" not in card or "享年" in card or "chips" not in card:
         print("[NG] 誕生カードが不正（享年が出ている/描画されていない）", len(card))
         return 1
     print("誕生カード文字数:", len(card), "/ 享年なし OK")
+
+    # --- 猫ステージ（画像・首輪・ステータス） ---
+    actor = ctx.eval("document.getElementById('catActor').innerHTML")
+    if '<img' not in actor or 'assets/cats/' not in actor or 'collarBadge' not in actor:
+        print("[NG] 猫ステージに画像/首輪バッジがない", actor[:120])
+        return 1
+    if '-kitten.png' not in actor or '-adult.png' not in actor:
+        print("[NG] 子猫と成猫の両方の画像が入っていない")
+        return 1
+    print("猫ステージ: 子猫/成猫画像 + 首輪バッジ OK")
+
+    scene_cls = ctx.eval("document.getElementById('stageScene').className")
+    if "stage-scene scene--" not in scene_cls:
+        print("[NG] 背景シーンが設定されていない:", scene_cls)
+        return 1
+    stats_html = ctx.eval("document.getElementById('stats').innerHTML")
+    if stats_html.count("stat--") < 3 or "たいりょく" not in stats_html or "おなか" not in stats_html or "うん" not in stats_html:
+        print("[NG] ミニステータスが3つ出ていない", len(stats_html))
+        return 1
+    print("背景シーン:", scene_cls, "/ ステータス:", len(stats_html), "文字")
+
+    # タップ反応（例外なく動くか）
+    ctx.eval("CATAPP.tapCat()")
+    if ctx.eval("CATAPP.state.taps") < 1:
+        print("[NG] タップ反応が動いていない")
+        return 1
+    print("タップ反応: OK（吹き出し", ctx.eval("CATART.bubbleFor(1,1).text"), "）")
+
+    # 成長：子猫と成猫で画像とサイズが違う
+    grow = ctx.eval("""
+      (function(){
+        var c = CATGACHA.rollCat(4242);
+        var k = CATART.actorHTML(c, {stage:'kitten'});
+        var a = CATART.actorHTML(c, {stage:'adult'});
+        return JSON.stringify({
+          kKitten: k.indexOf('is-kitten') >= 0 && k.indexOf('cat-img--kitten is-on') >= 0,
+          aAdult: a.indexOf('is-adult') >= 0 && a.indexOf('cat-img--adult is-on') >= 0,
+          different: CATART.assetPath(c,'kitten') !== CATART.assetPath(c,'adult')
+        });
+      })()
+    """)
+    print("成長表示:", grow)
+    if '"kKitten":true' not in grow or '"aAdult":true' not in grow or '"different":true' not in grow:
+        print("[NG] 子猫→成猫の表示切り替えが不正")
+        return 1
+
+    # 拾われる体験：野良として生まれた猫を探し、首輪と家の背景を確認
+    adopt = ctx.eval("""
+      (function(){
+        for (var i = 1; i <= 600; i++) {
+          var c = CATGACHA.rollCat(i * 7919);
+          if (c.adoptIndex != null) {
+            return JSON.stringify({
+              i: i, route: c.route, idx: c.adoptIndex,
+              kind: c.story[c.adoptIndex].kind,
+              before: CATART.sceneKeyFor(c, c.adoptIndex - 1),
+              after: CATART.sceneKeyFor(c, c.adoptIndex),
+              last: CATART.sceneKeyFor(c, c.story.length - 1),
+              collar: CATART.actorHTML(c, {stage: c.story[c.adoptIndex].stage}).indexOf('collarBadge') >= 0,
+              html: CATAPP.buildStepHTML(c, c.adoptIndex, {})
+            });
+          }
+        }
+        return '{}';
+      })()
+    """)
+    import json as _json
+    ad = _json.loads(adopt)
+    if not ad:
+        print("[NG] 拾われる猫が見つからない")
+        return 1
+    if ad["kind"] != "adopt" or ad["after"] != "home" or ad["last"] != "home" or ad["before"] == "home":
+        print("[NG] 拾われた時の背景切り替えが不正", ad["before"], "->", ad["after"])
+        return 1
+    if "家族に迎えられた" not in ad["html"] or "拾われる" not in ad["html"]:
+        print("[NG] 拾われたカードの表示が不正")
+        return 1
+    print(f"拾われる体験: seed {ad['i']} / {ad['route']} / {ad['before']} → {ad['after']} / 首輪 OK")
     if ctx.eval("document.getElementById('walkBtn').hidden"):
         print("[NG] 歩むボタンが出ていない")
         return 1

@@ -1,7 +1,7 @@
 """世界猫生ガチャ — 検証スクリプト
 1) 10,000回の抽選シミュレーション（例外・分布・寿命・整合性）
-2) 猫生ストーリー（3〜7歩・子猫→成猫→シニアの成長・2択）の検査
-3) 全アセット（SVG各ステージ）の生成チェック
+2) 猫生ストーリー（3〜7歩・子猫→成猫→シニアの成長・2択・拾われる）の検査
+3) 全アセット（13タイプ×子猫/成猫のPNG）とマッピング網羅性のチェック
 4) データ網羅性のチェック（純血種・野生ネコ科・国）
 
 Node.js が無い環境のため quickjs（Python埋め込みJSエンジン）で
@@ -18,7 +18,7 @@ import quickjs
 ROOT = Path(__file__).resolve().parent.parent
 JS_FILES = [
     "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js",
-    "js/data.js", "js/engine.js", "js/svgcat.js", "js/app.js",
+    "js/data.js", "js/engine.js", "js/catart.js", "js/app.js",
 ]
 N = 10000
 SEED = 20261123
@@ -51,24 +51,26 @@ def run(ctx):
     ctx.set("_SEED", SEED)
     return ctx.eval("""
 (function(){
-  function svgOk(s) {
-    var x = String(s || '').trim();
-    return x.indexOf('<svg') === 0 && x.lastIndexOf('</svg>') === x.length - 6;
+  var RE = new RegExp('<img[^>]+src="assets/cats/[a-z]+-(kitten|adult)\\\\.png"', 'i');
+  function actorOk(html) {
+    var x = String(html || '');
+    return RE.test(x) && x.indexOf('collarBadge') >= 0 && x.indexOf('undefined') < 0 && x.indexOf('NaN') < 0;
   }
-  var out = {cats: [], svgErrors: [], errors: 0};
+  var out = {cats: [], assetErrors: [], errors: 0};
   var seed = _SEED;
   for (var i = 0; i < _N; i++) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     try {
       var c = CATGACHA.rollCat(seed);
-      var svg = CATGACHA_SVG.render(c);
-      var s2 = String(svg || '').trim();
-      if (!svgOk(svg)) out.svgErrors.push({i: i, name: c.speciesName});
+      var actor = CATART.actorHTML(c, {stage: 'kitten'});
+      if (!actorOk(actor)) out.assetErrors.push({i: i, name: c.speciesName});
       var story = c.story;
-      var stageSvg = ['kitten', 'adult', 'senior'].map(function(st){ return svgOk(CATGACHA_SVG.render(c, {stage: st})); });
-      var deathSvg = svgOk(CATGACHA_SVG.render(c, {stage: story[story.length-1].stage, eyes: 'closed'}));
+      var stageOk = ['kitten', 'adult', 'senior'].map(function(st){ return actorOk(CATART.actorHTML(c, {stage: st})); });
+      var deathActor = actorOk(CATART.actorHTML(c, {stage: story[story.length-1].stage}));
       var html = CATAPP.buildResultHTML(c);
       var fin = CATAPP.buildFinaleHTML(c);
+      var s0 = CATART.statsFor(c, 0);
+      var sLast = CATART.statsFor(c, story.length - 1);
       out.cats.push({
         klass: c.klass, route: c.route, country: c.region.bucket, regionName: c.region.name,
         speciesKey: c.speciesKey, speciesName: c.speciesName, speciesGroup: c.speciesGroup || null,
@@ -86,8 +88,8 @@ def run(ctx):
         storyStages: story.map(function(s){ return s.stage; }),
         storyTitles: story.every(function(s){ return !!s.title; }),
         storyTexts: story.every(function(s){ return !!s.text; }),
-        eventTexts: story.filter(function(s){ return s.kind === 'event'; }).map(function(s){ return s.text; }),
-        stageOk: story.every(function(s){
+        eventTexts: story.filter(function(s){ return s.kind === 'event' || s.kind === 'adopt'; }).map(function(s){ return s.text; }),
+        stageOk2: story.every(function(s){
           var a = s.kind === 'birth' ? 0 : s.age;
           return s.stage === CATGACHA.stageForAge(a);
         }),
@@ -101,8 +103,32 @@ def run(ctx):
         finaleHtml: fin,
         finaleOk: !/undefined|NaN/.test(fin) && fin.indexOf('享年') >= 0,
         birthNoAge: html.indexOf('享年') < 0,
-        stageSvg: stageSvg.every(function(x){ return x; }),
-        deathSvg: deathSvg
+        stageActors: stageOk.every(function(x){ return x; }),
+        deathActor: deathActor,
+        actorOk: actorOk(actor),
+        artType: CATART.typeFor(c),
+        assetK: CATART.assetPath(c, 'kitten'),
+        assetA: CATART.assetPath(c, 'adult'),
+        scene0: CATART.sceneKeyFor(c, 0),
+        sceneLast: CATART.sceneKeyFor(c, story.length - 1),
+        adopted: c.adoptIndex != null,
+        adoptIndex: c.adoptIndex == null ? null : c.adoptIndex,
+        adoptOk: (c.adoptIndex == null) ? true : (
+          story[c.adoptIndex] && story[c.adoptIndex].kind === 'adopt' &&
+          CATART.sceneKeyFor(c, c.adoptIndex) === 'home' &&
+          CATART.sceneKeyFor(c, c.adoptIndex - 1) !== 'home'
+        ),
+        adoptBeforeDeath: (c.adoptIndex == null) ? true : (c.adoptIndex < story.length - 1),
+        statsOk: [0, 1, 2, 3, 4, 5, 6].every(function(k){
+          if (k >= story.length) return true;
+          var s = CATART.statsFor(c, k);
+          return s.energy >= 0 && s.energy <= 100 && s.food >= 0 && s.food <= 100 && s.luck >= 0 && s.luck <= 100;
+        }),
+        statDelta: Math.abs(sLast.energy - s0.energy) + Math.abs(sLast.food - s0.food) + Math.abs(sLast.luck - s0.luck),
+        statsHTML: CATART.statsHTML(c, Math.min(2, story.length - 1)),
+        particleCount: (CATART.particlesHTML(c, 0, false).match(/<span/g) || []).length,
+        bubbleText: CATART.bubbleFor(c.seed, 1).text,
+        hasAdoptCollar: actor.indexOf('collar is-on') >= 0
       });
     } catch (e) {
       out.errors++;
@@ -110,16 +136,22 @@ def run(ctx):
     }
   }
   var D = CATGACHA_DATA;
+  var coverage = [];
+  D.COATS.forEach(function(c){ coverage.push({key: 'coat:'+c.key, type: CATART.typeFor({klass:'domestic', speciesKey:'coat:'+c.key, pattern: c})}); });
+  D.BREEDS.forEach(function(b){ coverage.push({key: 'breed:'+b.key, type: CATART.typeFor({klass:'domestic', speciesKey:'breed:'+b.key, pattern: b})}); });
+  D.WILD.forEach(function(w){ coverage.push({key: 'wild:'+w.key, type: CATART.typeFor({klass:'wild', species: w})}); });
   out.meta = {
     coats: D.COATS.length, breeds: D.BREEDS.length, wild: D.WILD.length,
     countries: D.COUNTRIES.length, mutations: D.MUTATIONS.length,
     targets: CATAPP.TOTAL_TARGETS,
     speciesCatalog: CATAPP.CATALOG.species.length,
+    types: CATART.TYPES,
+    coverage: coverage,
     wildMissingCountry: D.WILD.filter(function(w){ return !w.countries || !w.countries.length || !w.countries.every(function(k){ return D.COUNTRIES.some(function(c){return c.key===k;}); }); }).map(function(w){return w.key;}),
     countryBad: D.COUNTRIES.filter(function(c){ return !c.where || !c.where.length || !c.names || !c.names.length || !c.region; }).map(function(c){return c.key;}),
     dupKeys: (function(){
       function dups(a){var s={},d=[];a.forEach(function(x){if(s[x])d.push(x);s[x]=1});return d;}
-      return dups(D.BREEDS.map(function(b){return b.key;})).concat(dups(D.WILD.map(function(w){return w.key;}))).concat(dups(D.COUNTRIES.map(function(c){return c.key;})));
+      return dups(D.BREEDS.map(function(b){return b.key;})).concat(dups(D.WILD.map(function(w){return w.key;})).concat(dups(D.COUNTRIES.map(function(c){return c.key;}))));
     })(),
     shareSums: [
       +D.COUNTRIES.reduce(function(a,c){return a+c.ownedW;},0).toFixed(6),
@@ -146,11 +178,37 @@ def main():
 
     print("=== 世界猫生ガチャ 検証 ===")
     print(f"シミュレーション {n:,} 回 / seed={SEED}")
-    print(f"例外: {data['errors']} 件   SVG崩れ: {len(data['svgErrors'])} 件")
+    print(f"例外: {data['errors']} 件   アセット不備: {len(data['assetErrors'])} 件")
     check(data["errors"] == 0, f"抽選中の例外 {data['errors']} 件")
     if data["errors"]:
         print("   last:", data.get("lastError", "")[:400])
-    check(not data["svgErrors"], f"SVG生成の崩れ {len(data['svgErrors'])} 件")
+    check(not data["assetErrors"], f"アセットHTMLの崩れ {len(data['assetErrors'])} 件")
+
+    # ---- 画像アセット（13タイプ×子猫/成猫） ----
+    print("\n--- 画像アセット ---")
+    types = meta["types"]
+    print(f"  タイプ {len(types)} 種: {' / '.join(types)}")
+    missing_assets = []
+    total_bytes = 0
+    for t in types:
+        for st in ("kitten", "adult"):
+            p = ROOT / "assets" / "cats" / f"{t}-{st}.png"
+            if not p.exists() or p.stat().st_size < 2000:
+                missing_assets.append(f"{t}-{st}.png")
+            else:
+                total_bytes += p.stat().st_size
+    print(f"  画像ファイル: {len(types) * 2 - len(missing_assets)}/{len(types) * 2} 枚 / 合計 {total_bytes/1024/1024:.2f}MB")
+    check(not missing_assets, f"画像アセットが欠けている: {missing_assets}")
+    check(total_bytes < 4 * 1024 * 1024, "画像アセットが重すぎる（4MB超）")
+
+    # マッピング網羅性
+    cov = meta["coverage"]
+    bad_cov = [c for c in cov if c["type"] not in types]
+    counts = Counter(c["type"] for c in cov)
+    print(f"  マッピング: {len(cov)} 種 → {len(counts)} タイプにすべて紐づく")
+    print("    " + " / ".join(f"{k}:{v}" for k, v in sorted(counts.items())))
+    check(not bad_cov, f"未知タイプへのマッピング: {bad_cov[:5]}")
+    check(len(cov) == meta["coats"] + meta["breeds"] + meta["wild"], "マッピング対象数が図鑑の種数と不一致")
 
     # ---- データ網羅性 ----
     print("\n--- データ網羅性 ---")
@@ -253,7 +311,7 @@ def main():
     check(all(c["birthAge"] == 0 for c in cats), "誕生ステップの年齢が0でない")
     check(all(abs(c["deathAge"] - c["age"]) < 1e-9 for c in cats), "最期ステップの年齢が寿命と不一致")
     check(all(c["tlAsc"] for c in cats), "ストーリーの時系列が逆転")
-    check(all(c["stageOk"] for c in cats), "年齢と成長ステージが不一致")
+    check(all(c["stageOk2"] for c in cats), "年齢と成長ステージが不一致")
     check(all(s in ("kitten", "adult", "senior") for c in cats for s in c["storyStages"]), "未知の成長ステージ")
     check(all(c["storyTitles"] and c["storyTexts"] for c in cats), "タイトル/本文が空のステップ")
     check(all(c["storyStages"][0] == "kitten" for c in cats), "誕生が子猫ステージでない")
@@ -266,13 +324,35 @@ def main():
     print(f"  シニア猫まで育つ猫生: {senior_cats} ({pct(senior_cats, n)})")
     check(senior_cats > 0, "シニアステージの猫が1頭もいない")
 
-    # ---- 誕生〜最期の画面 ----
-    print("\n--- 画面HTML ---")
-    check(all(c["birthNoAge"] for c in cats), "誕生画面に享年が出ている")
-    check(all(c["finaleOk"] for c in cats), "フィナーレに享年/確率が揃っていない")
-    check(all(c["stageSvg"] for c in cats), "子猫/成猫/シニアのSVGが崩れている")
-    check(all(c["deathSvg"] for c in cats), "最期(目を閉じた)SVGが崩れている")
-    print("  誕生画面: 享年なし OK / フィナーレ: 享年・確率 OK / 3ステージSVG OK")
+    # ---- 拾われる（家族に迎えられる）体験 ----
+    print("\n--- 拾われる体験 ---")
+    adopted = [c for c in cats if c["adopted"]]
+    print(f"  拾われた猫: {len(adopted)}頭 ({pct(len(adopted), n)})")
+    for route in ("street", "community", "feral"):
+        xs = [c for c in cats if c["route"] == route]
+        ys = [c for c in xs if c["adopted"]]
+        if xs:
+            print(f"    {route:10s} {len(ys):4d}/{len(xs):5d} ({pct(len(ys), len(xs))})")
+    check(len(adopted) > 0, "拾われるイベントが一件も発生しない")
+    check(all(c["adoptOk"] for c in adopted), "拾われたステップ/背景の切り替えが不正")
+    check(all(c["adoptBeforeDeath"] for c in adopted), "拾われるのが最期ステップ以降になっている")
+    check(all(c["sceneLast"] == "home" for c in adopted), "拾われた猫の最期が家の背景でない")
+    check(all(c["route"] in ("street", "community", "feral") for c in adopted), "飼い猫や野生種が拾われている")
+    check(not any(c["adopted"] for c in cats if c["klass"] == "wild"), "野生ネコ科が拾われている")
+
+    # ---- アセット/演出 ----
+    print("\n--- アセット・演出 ---")
+    print(f"  子猫/成猫/シニアのアクターHTML: {'OK' if all(c['stageActors'] for c in cats) else 'NG'}")
+    print(f"  最期のアクター: {'OK' if all(c['deathActor'] for c in cats) else 'NG'}")
+    print(f"  使用タイプ: {dict(Counter(c['artType'] for c in cats))}")
+    print(f"  パーティクル数: 最小 {min(c['particleCount'] for c in cats)} / 最大 {max(c['particleCount'] for c in cats)}")
+    print(f"  ステータス変化の合計: 平均 {sum(c['statDelta'] for c in cats)/n:.1f} / 最大 {max(c['statDelta'] for c in cats)}")
+    check(all(c["actorOk"] for c in cats), "猫のアクターHTMLが不正")
+    check(all(c["stageActors"] for c in cats), "子猫/成猫/シニアの画像HTMLが崩れている")
+    check(all(c["deathActor"] for c in cats), "最期の画像HTMLが崩れている")
+    check(all(c["statsOk"] for c in cats), "ステータスが0〜100の範囲外")
+    check(all(6 <= c["particleCount"] <= 16 for c in cats), "パーティクルの数がおかしい")
+    check(all(c["bubbleText"] for c in cats), "タップ時の吹き出しが空")
 
     # ---- 整合性 ----
     print("\n--- 整合性チェック ---")

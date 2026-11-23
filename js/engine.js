@@ -527,9 +527,10 @@
   }
 
   function pickStoryEvent(pool, used, age, rng) {
-    let cands = pool.filter(e => used.indexOf(e) < 0 && age >= e.min && age <= e.max);
+    const usedTexts = used.map(e => e.text);
+    let cands = pool.filter(e => usedTexts.indexOf(e.text) < 0 && age >= e.min && age <= e.max);
     if (!cands.length) {
-      const rest = pool.filter(e => used.indexOf(e) < 0);
+      const rest = pool.filter(e => usedTexts.indexOf(e.text) < 0);
       if (!rest.length) return null;
       const mid = e => e.min + (Math.min(e.max, 30) - e.min) / 2;
       cands = rest.slice().sort((x, y) => Math.abs(mid(x) - age) - Math.abs(mid(y) - age)).slice(0, 4);
@@ -548,7 +549,34 @@
     return pick(pool, rng);
   }
 
-  /* ---------- 猫生ストーリー（1ステップずつ歩く） ---------- */
+  /* ---------- 「拾われる」＝家族に迎えられるイベント ---------- */
+  const ADOPT_TEXTS = {
+    community: [
+      'いつも餌をくれていた人が、とうとう家に連れて帰ってくれた。玄関で、はじめて名前を呼ばれる。',
+      '町内の人が保護してくれた。ケージの中で、はじめて人の手の温かさを知る。'
+    ],
+    street: [
+      '段ボールの中で丸くなっていたところを、人がそっと抱き上げた。はじめて腕の中で眠る。',
+      '雨の夜、車の下で震えているのを見つけられ、タオルに包まれて連れて行かれた。',
+      '毎朝パンをくれていた店の人が、とうとう「うちにおいで」と言った。'
+    ],
+    feral: [
+      '罠にかかって保護された。ケージの前で毎日話しかけてくる人がいて、ある日、逃げなかった。'
+    ]
+  };
+
+  /* 野良・地域猫・野生化したイエネコだけが、途中で人間に拾われることがある */
+  function adoptionRoll(cat, rng) {
+    if (!cat || cat.klass === 'wild' || cat.special) return false;
+    const route = cat.route;
+    if (route !== 'street' && route !== 'community' && route !== 'feral') return false;
+    const p = route === 'community' ? 0.42 : route === 'street' ? 0.30 : 0.10;
+    return chance(p, rng);
+  }
+
+  /* ---------- 猫生ストーリー（1ステップずつ歩く） ----------
+     野良として生まれた猫は、途中で人に拾われて「おうちの猫」になることがある。
+     その回のイベントを「拾われる」ステップに差し替え、以降は家の中の出来事になる。 */
   function buildStory(cat, rng) {
     const age = Math.max(0.08, Number(cat.ageYears) || 0.08);
     const total = storyStepCount(age);
@@ -595,12 +623,37 @@
       }
     }
 
+    /* 拾われるスロット（2択イベントと重ならないように選ぶ） */
+    let adoptSlot = 0;
+    if (adoptionRoll(cat, rng)) {
+      const cands = [];
+      for (let i = 1; i <= eventCount; i++) if (!choiceFor[i]) cands.push(i);
+      const early = cands.filter(i => slots[i - 1] < 3);
+      const poolA = early.length ? early : cands;
+      if (poolA.length) adoptSlot = poolA[Math.floor(rng() * poolA.length)];
+    }
+    const homePool = adoptSlot ? storyPool(Object.assign({}, cat, { route: 'owned', klass: 'domestic' })) : null;
+
     for (let i = 1; i <= eventCount; i++) {
       const a = slots[i - 1];
       const stage = stageForAge(a);
       const titles = STORY_TITLES[stage] || STORY_TITLES.adult;
       const title = titles[(i - 1) % titles.length];
       const ch = choiceFor[i];
+
+      if (i === adoptSlot) {
+        const text = pick(ADOPT_TEXTS[cat.route] || ADOPT_TEXTS.street, rng);
+        cat.adopted = true;
+        cat.adoptIndex = i;
+        cat.adoptTitle = '拾われる';
+        cat.adoptText = text;
+        steps.push({
+          kind: 'adopt', age: a, ageLabel: ageLabel(a), stage, title: '拾われる',
+          text: text, adopted: true
+        });
+        continue;
+      }
+
       if (ch) {
         steps.push({
           kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
@@ -609,7 +662,8 @@
         });
         continue;
       }
-      const e = pickStoryEvent(pool, used, a, rng);
+      const useHome = adoptSlot && i > adoptSlot;
+      const e = pickStoryEvent(useHome ? homePool : pool, used, a, rng);
       steps.push({
         kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
         text: e ? e.text : fallbackStoryText(stage, rng)
@@ -752,6 +806,17 @@
       return { cause: 'early', text: pick(pool, rng) };
     }
 
+    if (cat.adopted) {
+      if (veryOld) return { cause: 'natural', text: '家の中で、日向ぼっこの場所に丸くなったまま動かなくなっていた。大往生。' };
+      const homePool = [
+        { c: 'illness', t: '病気が進み、家族に看取られて静かに息を引き取る。' },
+        { c: 'natural', t: 'ある日から食べなくなり、いつもの毛布の上で眠るように逝く。' },
+        { c: 'illness', t: '腎臓の病気が進み、病院の帰り道、腕の中で息を引き取る。' }
+      ];
+      const hd = pick(homePool, rng);
+      return { cause: hd.c, text: hd.t };
+    }
+
     if (route === 'owned' || route === 'purebred' || route === 'community') {
       if (veryOld) return { cause: 'natural', text: '前の日まで日向ぼっこをしていた。ある朝、いつもの場所で動かなくなっていた。大往生。' };
       if (old) return { cause: 'illness', text: '腎臓の病気が進み、獣医に看取られて静かに息を引き取る。' };
@@ -805,6 +870,14 @@
           'この星のどこかで、確かに息をしていた。',
           '人の知らないところで、狩りをして、眠った。'], rng);
       return cat.speciesName + '。' + tail;
+    }
+    if (cat.adopted) {
+      const who = `${cat.region.name}の${cat.speciesName}の${D.SEX_LABEL[cat.sex]}。`;
+      if (a < 4) return who + '拾われて、ほんの少しだけ家の猫だった。';
+      if (a >= 15) return who + '拾われた日から、ずっと窓辺の猫だった。大往生。';
+      return who + pick(['拾われてからは、毎日が同じで、毎日がしあわせだった。',
+        'あの夜に拾われなかったら、知らないまま終わっていた毎日。',
+        '名前を呼ばれるたびに、しっぽを立てて応えた。'], rng);
     }
     const head = `${cat.region.name}の${cat.statusLabel}、${cat.speciesName}の${D.SEX_LABEL[cat.sex]}。`;
     if (a >= 18) return head + '信じられないほど長く生きた、大往生の一生。';
