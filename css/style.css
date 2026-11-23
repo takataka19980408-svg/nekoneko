@@ -1106,13 +1106,15 @@ body::before {
 .tab {
   flex: 0 0 auto;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
   border: 1.5px solid #fff;
   background: rgba(255, 255, 255, .8);
   color: var(--ink-2);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 800;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
@@ -2108,6 +2110,8 @@ body::before {
 .ach-cell .ach-body b { font-size: 11px; font-weight: 800; color: var(--ink); }
 .ach-cell .ach-body em { font-style: normal; font-size: 9.5px; color: var(--ink-3); font-weight: 700; line-height: 1.45; }
 .ach-cell .ach-mark { flex: 0 0 auto; font-size: 11px; font-weight: 800; color: #4d9a76; }
+
+.ico { display: inline-block; min-width: 1.1em; margin-right: 2px; text-align: center; }
 
 /* ---------- アニメーション抑制 ---------- */
 @media (prefers-reduced-motion: reduce) {

@@ -247,7 +247,7 @@
     const got = dex && dex.ach ? Object.keys(dex.ach).length : 0;
     const news = fresh || [];
     return `<div class="ach-burst${news.length ? ' is-new' : ''}">
-      <div class="ach-burst-head"><span>🏆 実績・称号</span><b>${got} / ${total}</b></div>
+      <div class="ach-burst-head"><span><span class="ico">🏆</span>実績・称号</span><b>${got} / ${total}</b></div>
       ${news.length
         ? `<p class="ach-burst-lead">✨ 新しい称号を獲得！</p><ul class="ach-burst-list">${news.map(a => `<li class="tone-${a.tone}"><span class="ach-burst-icon">${a.icon}</span><span class="ach-burst-body"><b>${a.name}</b><em>${a.desc}</em></span></li>`).join('')}</ul>`
         : `<p class="ach-burst-none">${got ? '今回の新規解除はなし。図鑑の「🏆 実績・きろく」で次の目標をチェック。' : 'まだ実績なし。まずは1匹、猫生を最後まで歩いてみよう。'}</p>`}
@@ -385,7 +385,7 @@
       const mark = h.nekomata ? '🔮' : h.maneki ? '🏮' : h.boss ? '👑' : h.adopted ? '🏡' : '';
       return `<li><span>${mark ? mark + ' ' : ''}${h.rarity}・${h.species}（${h.region}）</span><span>${ageText(h.age)}</span></li>`;
     }).join('');
-    return `<div class="dex-section"><h4><span>🏆 実績・称号</span><span>${achGot}/${E.ACHIEVEMENTS.length}</span></h4>
+    return `<div class="dex-section"><h4><span><span class="ico">🏆</span>実績・称号</span><span>${achGot}/${E.ACHIEVEMENTS.length}</span></h4>
         <div class="ach-grid">${cells}</div></div>
       <div class="dex-section"><h4><span>📊 これまでのきろく</span></h4><ul class="record-list">${records}</ul></div>
       ${hist ? `<div class="dex-section"><h4><span>最近の猫生</span></h4><ul class="record-list">${hist}</ul></div>` : ''}
