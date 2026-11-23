@@ -1259,7 +1259,8 @@
       const add = extendLife(cat, fx.life);
       if (add) {
         out.lifeAdded = add;
-        out.headlines.push('✨ 寿命が延びたかも！（+' + (Math.round(add * 10) / 10) + '年）');
+        /* 何年延びたかは言わない（寿命は最後まで伏せる） */
+        out.headlines.push('✨ ピンチを乗り越えて、長生きできそう！');
       }
     }
     if (fx.risk) {

@@ -246,12 +246,86 @@ def main():
     ctx.eval("CATAPP.toggleAuto()")
     print("オートの一時停止/再開: OK")
 
-    # --- 年齢の目盛り ---
-    ruler = ctx.eval("JSON.stringify({ticks: document.getElementById('ageTicks').innerHTML.length, left: document.getElementById('ageMarker').style.left, age: document.getElementById('ageRuler').dataset.age})")
-    print("年齢の目盛り:", ruler)
-    rd = json.loads(ruler)
-    if rd["ticks"] < 100 or not rd["age"]:
-        print("[NG] 年齢の目盛りが描画されていない")
+    # --- 2択のカウントダウン（放っておくとおまかせ選択） ---
+    ctx.eval("""
+      var g = 0;
+      while (g++ < 90 && !CATAPP.pendingChoice()) {
+        if (CATAPP.state.current.story[CATAPP.state.step].kind === 'death') break;
+        CATAPP.walk();
+      }
+    """)
+    if not ctx.eval("!!CATAPP.pendingChoice()"):
+        print("[NG] 2択のステップに到達できない")
+        return 1
+    if ctx.eval("CATAPP.state.choiceTimer") in (0, None):
+        print("[NG] 2択でカウントダウンが始まっていない")
+        return 1
+    left0 = ctx.eval("CATAPP.state.choiceLeft")
+    print("カウントダウン:", left0, "ms / speed", ctx.eval("CATAPP.state.speed"))
+    if not left0 or left0 <= 0:
+        print("[NG] カウントダウンの残り時間が不正")
+        return 1
+    # 一時停止中は止まる
+    ctx.eval("CATAPP.toggleAuto()")
+    if ctx.eval("CATAPP.state.choiceTimer") not in (0, None):
+        print("[NG] 一時停止してもカウントダウンが止まらない")
+        return 1
+    ctx.eval("CATAPP.choiceTick()")
+    if abs((ctx.eval("CATAPP.state.choiceLeft") or 0) - left0) > 0.001:
+        print("[NG] 一時停止中にカウントダウンが進んだ")
+        return 1
+    ctx.eval("CATAPP.toggleAuto()")
+    if ctx.eval("CATAPP.state.choiceTimer") in (0, None):
+        print("[NG] 再開してもカウントダウンが動かない")
+        return 1
+    # 時間切れ → おまかせで選ばれてオートが続く
+    ctx.eval("CATAPP.state.choiceLeft = 60; CATAPP.choiceTick();")
+    if ctx.eval("!!CATAPP.pendingChoice()"):
+        print("[NG] 時間切れで自動選択されない")
+        return 1
+    if "時間切れ" not in ctx.eval("document.getElementById('stageToast').textContent"):
+        print("[NG] 時間切れのおまかせ表示がない")
+        return 1
+    print("2択のカウントダウン/一時停止/おまかせ選択: OK")
+
+    # --- 年齢の帯（現在の年齢＋通り過ぎた節目だけ／寿命は伏せる） ---
+    strip = json.loads(ctx.eval("""
+      (function(){
+        var marks = document.getElementById('lifeMarks').innerHTML;
+        var age = CATAPP.state.current.story[CATAPP.state.step].age;
+        var future = [];
+        (marks.match(/(\\d+)歳/g) || []).forEach(function(t){
+          var n = parseInt(t, 10);
+          if (n > age + 0.0001) future.push(n);
+        });
+        return JSON.stringify({
+          age: document.getElementById('lifeAge').textContent,
+          season: document.getElementById('lifeSeason').textContent,
+          marks: marks.length, future: future
+        });
+      })()
+    """))
+    print("年齢の帯:", strip)
+    if not strip["age"]:
+        print("[NG] 現在の年齢が出ていない")
+        return 1
+    if strip["future"]:
+        print("[NG] まだ来ていない年齢の節目が出ている:", strip["future"])
+        return 1
+
+    # 総歩数（寿命）が見えないこと
+    prog_html = ctx.eval("CATAPP.progressHTML(CATAPP.state.current, 3)")
+    card_now = ctx.eval("document.getElementById('pageWrap').innerHTML")
+    sub_now = ctx.eval("document.getElementById('walkSub').textContent")
+    print("進捗表示:", prog_html, "/ walkSub:", sub_now)
+    if "歩目" not in prog_html or "あと" in prog_html or re.search(r"\d+\s*/\s*\d+", prog_html):
+        print("[NG] 進捗表示が総歩数を漏らしている:", prog_html)
+        return 1
+    if "あと" in sub_now:
+        print("[NG] walkSub が残り歩数を漏らしている:", sub_now)
+        return 1
+    if "page-no" in card_now or re.search(r"\d+\s*/\s*\d+", card_now):
+        print("[NG] カードに総歩数の表示がある")
         return 1
 
     # --- 猫ステージ（画像・首輪・ステータス） ---
@@ -366,8 +440,8 @@ def main():
     """)
     pg = json.loads(prog)
     print("15歳前後の猫生:", {k: pg[k] for k in ("age", "len", "steps15", "steps1", "stepsHalf") if k in pg})
-    if not pg or "paw-bar" not in pg["html"]:
-        print("[NG] 長い猫生の進捗バーが出ていない")
+    if not pg or "歩目" not in pg["html"] or re.search(r"\d+\s*/\s*\d+", pg["html"]) or "あと" in pg["html"]:
+        print("[NG] 長い猫生の進捗表示が不正（総歩数が漏れている）:", (pg or {}).get("html"))
         return 1
     if not (45 <= pg["steps15"] <= 60):
         print("[NG] 15歳の歩数が45〜60でない:", pg["steps15"])

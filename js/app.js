@@ -202,17 +202,9 @@
     </div>`;
   }
 
+  /* 何歩目かだけを出す（総歩数＝寿命は最後まで伏せる） */
   function progressHTML(cat, idx) {
-    const n = cat.story.length;
-    if (n <= 10) {
-      return cat.story.map((s, i) => {
-        const cls = i < idx ? ' is-done' : i === idx ? ' is-now' : '';
-        return `<span class="paw${cls}">🐾</span>`;
-      }).join('');
-    }
-    const pct = n > 1 ? Math.round((idx / (n - 1)) * 100) : 0;
-    return `<span class="paw-count">🐾 ${idx + 1}<em>/${n}</em></span>`
-      + `<span class="paw-bar"><i style="width:${pct}%"></i></span>`;
+    return `<span class="paw-count">🐾 ${idx + 1}歩目</span>`;
   }
 
   function choiceHTML(step, pick) {
@@ -228,6 +220,10 @@
     }
     return `<div class="choice-box">
       <p class="choice-q">どうする？</p>
+      <div class="choice-clock" id="choiceClock" hidden>
+        <span class="choice-clock-bar"><i id="choiceClockBar"></i></span>
+        <span class="choice-clock-text" id="choiceClockText">⏳ おまかせまで 10秒</span>
+      </div>
       ${step.choice.options.map((o, i) =>
         `<button class="choice-btn" data-choice="${i}"><span class="choice-paw" aria-hidden="true">🐾</span><span>${o.label}</span></button>`
       ).join('')}
@@ -272,7 +268,6 @@
         <span class="page-tape" aria-hidden="true"></span>
         <div class="page-head">
           <span class="age-badge">生まれた日</span>
-          <span class="page-no">${idx + 1}/${cat.story.length}</span>
         </div>
         <div class="birth-hero">
           <p class="birth-name"><span class="birth-emoji" aria-hidden="true">🐈</span>${cat.name}</p>
@@ -290,7 +285,6 @@
       <div class="page-head">
         <span class="age-badge">${step.ageLabel}</span>
         ${isAdopt ? `<span class="adopt-tag">${step.maneki || cat.maneki ? '🏮 お店に迎えられた' : '🏡 家族に迎えられた'}</span>` : ''}
-        <span class="page-no">${idx + 1}/${cat.story.length}</span>
       </div>
       <div class="page-badges">${badgeHTML(cat, idx)}</div>
       <h2 class="page-title">${isDeath ? '🌈 最期' : isAdopt ? '🏡 ' + (step.adoptTitle || '拾われる') : isEvolve ? '🔮 ' + (step.title || '猫又になる') : '【' + step.title + '】'}</h2>
@@ -478,7 +472,7 @@
       dex: loadDex(), current: null, rolling: false, tab: 'species', step: 0,
       picked: {}, recorded: false, shownStage: null, shownScene: null, taps: 0, adopted: false,
       auto: true, speed: 1, autoTimer: null, newAch: [], shownForm: null, rulerKey: null, msShown: {},
-      started: false
+      started: false, choiceTimer: null, choiceLeft: null, choiceStart: 0, autoPicked: false
     };
 
     const el = {
@@ -498,8 +492,21 @@
       autoBar: $('autoBar'),
       autoBtn: $('autoBtn'), autoBtnIcon: $('autoBtnIcon'), autoBtnText: $('autoBtnText'),
       autoNote: $('autoNote'), speed1: $('speed1'), speed2: $('speed2'),
-      ageRuler: $('ageRuler'), ageTicks: $('ageTicks'), ageMarker: $('ageMarker'), ageFill: $('ageFill')
+      lifeAge: $('lifeAge'), lifeSeason: $('lifeSeason'), lifeMarks: $('lifeMarks')
     };
+
+    /* 名札はトップバーのすぐ下に貼りつく（高さは画面ごとに測る） */
+    function syncStickyOffset() {
+      try {
+        if (typeof document.querySelector !== 'function') return;
+        const tb = document.querySelector('.topbar');
+        const de = document.documentElement;
+        if (!tb || !de || !de.style || typeof de.style.setProperty !== 'function') return;
+        de.style.setProperty('--topbar-h', ((tb.offsetHeight || 60) + 1) + 'px');
+      } catch (e) { /* DOMスタブでは何もしない */ }
+    }
+    syncStickyOffset();
+    if (typeof root.addEventListener === 'function') root.addEventListener('resize', syncStickyOffset);
 
     /* --- 初期表示（ホームの子猫） --- */
     let preview = null;
@@ -667,7 +674,7 @@
       else if (block === 'birth') note = '🐾 「この子の猫生を歩む」でスタート';
       else if (!on) note = '🐾 手動で「猫生を歩む」';
       else if (block === 'death') note = '🌈 猫生が終わったよ';
-      else if (block === 'choice') note = '✋ 選択肢でひと休み（えらぶと再開）';
+      else if (block === 'choice') note = '✋ 選択肢（ほうっておくと自動で選ぶよ）';
       else note = '⏱ ' + (state.speed === 2 ? '1.9' : '3.8') + '秒ごとに自動で進む';
       el.autoNote.textContent = note;
     }
@@ -690,31 +697,104 @@
 
     function toggleAuto() {
       state.auto = !state.auto;
-      if (state.auto) scheduleAuto();
-      else { clearAuto(); updateAutoUI(); }
+      if (state.auto) { scheduleAuto(); startChoiceClock(); }
+      else { clearAuto(); stopChoiceClock(); updateAutoUI(); }
     }
 
     function setSpeed(n) {
       state.speed = n === 2 ? 2 : 1;
+      if (state.choiceLeft != null) state.choiceLeft = Math.min(state.choiceLeft, choiceMs());
       if (state.auto && !autoBlocked()) scheduleAuto();
       else updateAutoUI();
+      if (pendingChoice() && state.auto) startChoiceClock();
     }
 
-    /* --- 年齢の目盛り（生まれた日→4か月→1歳→3歳→6歳→10歳→15歳→20歳） --- */
-    function renderAgeRuler(cat, idx) {
+    /* --- 2択のカウントダウン（放置したらおまかせ選択） --- */
+    function choiceMs() { return state.speed === 2 ? 5000 : 10000; }
+
+    function pendingChoice() {
+      const cat = state.current;
+      if (!cat) return null;
+      const step = cat.story[state.step];
+      if (!step || !step.choice || step.chosen != null) return null;
+      return step;
+    }
+
+    function paintChoiceClock() {
+      const box = document.getElementById('choiceClock');
+      if (!box) return;
+      const total = choiceMs();
+      const left = state.choiceLeft == null ? 0 : Math.max(0, state.choiceLeft);
+      box.hidden = false;
+      const bar = document.getElementById('choiceClockBar');
+      if (bar) bar.style.width = Math.max(0, Math.min(100, Math.round((left / total) * 100))) + '%';
+      const txt = document.getElementById('choiceClockText');
+      if (txt) {
+        txt.textContent = left > 0
+          ? '⏳ おまかせまで ' + Math.ceil(left / 1000) + '秒（タップで選べる）'
+          : '⏳ おまかせ選択中…';
+      }
+    }
+
+    function hideChoiceClock() {
+      const box = document.getElementById('choiceClock');
+      if (box) box.hidden = true;
+    }
+
+    function stopChoiceClock() {
+      if (state.choiceTimer) {
+        clearTimeout(state.choiceTimer);
+        state.choiceTimer = null;
+      }
+    }
+
+    function startChoiceClock() {
+      stopChoiceClock();
+      if (!pendingChoice() || !state.auto || !state.started) { hideChoiceClock(); return; }
+      if (state.choiceLeft == null) state.choiceLeft = choiceMs();
+      state.choiceStart = Date.now();
+      paintChoiceClock();
+      state.choiceTimer = setTimeout(choiceTick, 100);
+    }
+
+    function choiceTick() {
+      state.choiceTimer = null;
+      if (!pendingChoice() || !state.auto || !state.started) { hideChoiceClock(); return; }
+      const now = Date.now();
+      state.choiceLeft = Math.max(0, (state.choiceLeft || 0) - Math.max(0, now - (state.choiceStart || now)));
+      state.choiceStart = now;
+      paintChoiceClock();
+      if (state.choiceLeft <= 0) { autoPickChoice(); return; }
+      state.choiceTimer = setTimeout(choiceTick, 100);
+    }
+
+    /* 時間切れ：その場で自然に選んで、オートを止めずに続ける */
+    function autoPickChoice() {
+      const step = pendingChoice();
+      if (!step) return;
+      stopChoiceClock();
+      state.choiceLeft = null;
+      hideChoiceClock();
+      const r = (root.Math && root.Math.random) ? root.Math.random() : 0.5;
+      state.autoPicked = true;
+      choose(r < 0.5 ? 0 : 1);
+      toast('⏳ 時間切れでおまかせ選択！', 'auto');
+    }
+
+    /* --- 年齢の帯（現在の年齢と、通り過ぎた節目だけ） --- */
+    function renderAgeStrip(cat, idx) {
       const step = cat.story[idx];
-      const ticks = E.ageTicks(cat);
-      const key = (cat.seed || 1) + ':' + (cat.nekomata ? 'n' : '');
-      if (state.rulerKey !== key) {
-        state.rulerKey = key;
-        el.ageTicks.innerHTML = ticks.map(t =>
-          `<span class="age-tick${t.age === 0 ? ' is-zero' : ''}" style="left:${t.pos}%"><i></i><em>${t.label}</em></span>`
+      el.lifeAge.textContent = step.ageLabel;
+      if (el.lifeSeason) {
+        el.lifeSeason.textContent = step.season
+          ? E.seasonEmoji(step.season) + ' ' + E.seasonLabel(step.season) : '';
+      }
+      if (el.lifeMarks) {
+        const passed = E.milestonesPassed(step.age).filter(m => m.age > 0);
+        el.lifeMarks.innerHTML = passed.map(m =>
+          `<span class="life-mark tone-${m.tone}">${m.icon} ${m.age}歳</span>`
         ).join('');
       }
-      const pct = E.ageScalePercent(step.age, ticks);
-      el.ageMarker.style.left = pct + '%';
-      el.ageFill.style.width = pct + '%';
-      el.ageRuler.dataset.age = step.ageLabel;
     }
 
     /* --- ストーリー --- */
@@ -727,11 +807,11 @@
       el.pageWrap.classList.remove('turn');
       void el.pageWrap.offsetWidth;
       el.pageWrap.classList.add('turn');
-      el.storyProgress.className = 'paw-track' + (cat.story.length > 10 ? ' has-bar' : '');
+      el.storyProgress.className = 'paw-track';
       el.storyProgress.innerHTML = progressHTML(cat, idx);
       if (el.nameplate) el.nameplate.innerHTML = nameplateHTML(cat, idx);
       updateStage(cat, idx);
-      renderAgeRuler(cat, idx);
+      renderAgeStrip(cat, idx);
 
       /* 人生の節目（1歳・3歳・6歳・10歳・15歳・20歳…）を知らせる */
       const ms = E.milestoneAt(cat.story, idx);
@@ -747,7 +827,7 @@
       if (el.walkText) el.walkText.textContent = !state.started ? 'この子の猫生を歩む' : '猫生を歩む';
       el.walkSub.textContent = !state.started
         ? 'タップで猫生がはじまる'
-        : needChoice ? 'えらんでね' : 'あと' + (cat.story.length - idx - 1) + '歩';
+        : needChoice ? 'えらんでね' : '1歩すすむ';
       el.skipBtn.hidden = isDeath;
       if (el.autoBar) el.autoBar.hidden = !state.started;
 
@@ -766,6 +846,8 @@
 
       el.memories.hidden = idx === 0;
       el.memoryList.innerHTML = memoryHTML(cat, idx, state.picked);
+      if (needChoice) startChoiceClock();
+      else { stopChoiceClock(); state.choiceLeft = null; hideChoiceClock(); }
       if (root.scrollTo) root.scrollTo({ top: 0, behavior: 'smooth' });
       scheduleAuto();
     }
@@ -781,6 +863,9 @@
       state.msShown = {};
       state.shownForm = null;
       state.rulerKey = null;
+      state.choiceLeft = null;
+      state.autoPicked = false;
+      stopChoiceClock();
       state.adopted = false;
       state.shownStage = null;
       state.shownScene = null;
@@ -810,6 +895,8 @@
         if (s.choice && s.chosen == null) { s.chosen = 0; state.picked[i] = 0; }
       });
       state.step = cat.story.length - 1;
+      stopChoiceClock();
+      state.choiceLeft = null;
       renderStory();
     }
 
@@ -822,8 +909,12 @@
       if (!step || !step.choice || step.chosen != null) return;
       if (i < 0 || i >= step.choice.options.length) return;
       state.picked[idx] = i;
+      stopChoiceClock();
+      state.choiceLeft = null;
+      hideChoiceClock();
       const fx = E.applyChoice(cat, idx, i);
-      state.extraDelay = true;
+      state.extraDelay = !state.autoPicked;
+      state.autoPicked = false;
       renderStory();
       if (fx) {
         if (fx.died) toast('😿 ピンチに巻き込まれた…', 'danger');
@@ -835,6 +926,8 @@
 
     function backHome() {
       clearAuto();
+      stopChoiceClock();
+      state.choiceLeft = null;
       el.story.hidden = true;
       el.home.hidden = false;
       state.current = null;
@@ -856,8 +949,8 @@
     if (el.speed2) el.speed2.addEventListener('click', () => setSpeed(2));
     if (typeof document.addEventListener === 'function') {
       document.addEventListener('visibilitychange', () => {
-        if (document.hidden) clearAuto();
-        else scheduleAuto();
+        if (document.hidden) { clearAuto(); stopChoiceClock(); }
+        else { scheduleAuto(); if (pendingChoice()) startChoiceClock(); }
       });
     }
     updateAutoUI();
@@ -957,6 +1050,11 @@
     root.CATAPP.toggleAuto = toggleAuto;
     root.CATAPP.setSpeed = setSpeed;
     root.CATAPP.updateAutoUI = updateAutoUI;
+    root.CATAPP.startChoiceClock = startChoiceClock;
+    root.CATAPP.stopChoiceClock = stopChoiceClock;
+    root.CATAPP.choiceTick = choiceTick;
+    root.CATAPP.autoPickChoice = autoPickChoice;
+    root.CATAPP.pendingChoice = pendingChoice;
   }
 
   root.CATAPP = Object.assign(root.CATAPP || {}, {

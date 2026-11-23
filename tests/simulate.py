@@ -12,6 +12,7 @@ Node.js が無い環境のため quickjs（Python埋め込みJSエンジン）�
 ブラウザで動くコードと同一のものを検証している。
 """
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -80,6 +81,11 @@ def run(ctx):
       var st0 = CATGACHA.statusOf(c, 0);
       var stA = c.adoptIndex == null ? null : CATGACHA.statusOf(c, c.adoptIndex);
       var stB = c.adoptIndex == null ? null : CATGACHA.statusOf(c, c.adoptIndex - 1);
+      var firstChoice = -1;
+      story.forEach(function(s, i){ if (firstChoice < 0 && s.choice) firstChoice = i; });
+      var choiceCard = firstChoice < 0 ? '' : CATAPP.buildStepHTML(c, firstChoice, {});
+      var midIdx = Math.min(3, story.length - 1);
+      var midCard = CATAPP.buildStepHTML(c, midIdx, {});
       out.cats.push({
         klass: c.klass, route: c.route, country: c.region.bucket, regionName: c.region.name,
         speciesKey: c.speciesKey, speciesName: c.speciesName, speciesGroup: c.speciesGroup || null,
@@ -168,7 +174,12 @@ def run(ctx):
           && html.indexOf('国・地域') >= 0 && html.indexOf('目の色') >= 0 && html.indexOf('境遇') >= 0,
         seasonOk: story.every(function(s){ return ['spring','summer','autumn','winter'].indexOf(s.season) >= 0; }),
         seasonSet: (function(){ var o = {}; story.forEach(function(s){ o[s.season] = 1; }); return Object.keys(o); })(),
-        stepTexts: story.map(function(s){ return s.text; })
+        stepTexts: story.map(function(s){ return s.text; }),
+        /* 寿命（総歩数）を漏らさない表示 */
+        noTotal: html.indexOf('page-no') < 0 && !/\d+\s*\/\s*\d+/.test(html)
+          && midCard.indexOf('page-no') < 0 && !/\d+\s*\/\s*\d+/.test(midCard),
+        progressText: CATAPP.progressHTML(c, 3),
+        choiceCardOk: firstChoice < 0 ? true : (choiceCard.indexOf('choiceClock') >= 0 && choiceCard.indexOf('choiceClockText') >= 0)
       });
     } catch (e) {
       out.errors++;
@@ -372,6 +383,17 @@ def main():
         check(slo <= a <= shi, f"{label}の平均歩数が範囲外: {a:.1f}")
         check(all(slo <= c["storyLen"] <= shi for c in xs), f"{label}に歩数が範囲外の猫がいる")
 
+    # ---- 寿命（総歩数）のネタバレが無いこと ----
+    print("\n--- 寿命ネタバレの禁止 ---")
+    check(all(c["noTotal"] for c in cats), "カードに総歩数（n/N）が出ている")
+    bad_prog = [c for c in cats
+                if "歩目" not in c["progressText"] or re.search(r"\d+\s*/\s*\d+", c["progressText"])
+                or "あと" in c["progressText"]]
+    print(f"  進捗表示の例: {cats[0]['progressText']}")
+    check(not bad_prog, f"進捗表示が総歩数を漏らしている: {len(bad_prog)}頭")
+    check(all(c["choiceCardOk"] for c in cats), "2択カードにカウントダウンの表示がない")
+    print("  2択カード: カウントダウンあり / 総歩数表示なし OK")
+
     # ---- 1猫生内の文章重複・欠損 ----
     empty_text = [c for c in cats if any((not isinstance(t, str)) or not t or "undefined" in t for t in c["stepTexts"])]
     check(not empty_text, f"文章が空/undefined のステップがある: {len(empty_text)}頭")
@@ -471,7 +493,7 @@ def main():
 
     play = json.loads(ctx.eval("""
       (function(){
-        var out = {errors: 0, last: null, rows: []};
+        var out = {errors: 0, last: null, rows: [], heads: []};
         for (var s = 1; s <= 1500; s++) {
           var c = CATGACHA.rollCat(s * 99991);
           try {
@@ -479,7 +501,8 @@ def main():
               var st = c.story[i];
               if (st.kind === 'death') break;
               if (st.choice && st.chosen == null) {
-                CATGACHA.applyChoice(c, i, i % st.choice.options.length);
+                var f0 = CATGACHA.applyChoice(c, i, i % st.choice.options.length);
+                (f0 && f0.headlines || []).forEach(function(h){ out.heads.push(h); });
                 if (i + 1 < c.story.length && c.story[i + 1].kind === 'death') break;
               }
             }
@@ -508,6 +531,10 @@ def main():
     print(f"  ボス猫になった: {boss_n} / 延命が発生: {bonus_n} / 最大延命 +{max((r['bonus'] for r in rows), default=0)}年")
     check(boss_n > 0, "通しプレイでボス猫ルートに入らない")
     check(bonus_n > 0, "通しプレイで延命が一度も起きない")
+    # 延命でも年数を言い切らない（寿命ネタバレ禁止）
+    leak = [h for h in play["heads"] if re.search(r"[+＋]\s*[\d.]+\s*年", h)]
+    print("  延命の見出し例:", next((h for h in play["heads"] if "長生き" in h), "(なし)"))
+    check(not leak, f"延命時に具体的な年数が出ている: {leak[:3]}")
 
     # ---- 超レア隠しルート ----
     print("\n--- 超レア隠しルート ---")
