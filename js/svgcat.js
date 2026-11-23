@@ -702,7 +702,7 @@
   </defs>
   ${sceneSVG(scene, u)}
   <g clip-path="url(#${u}-frame)">
-    <rect width="320" height="360" fill="#FFF1E4" opacity="${stage === 'kitten' ? 0.3 : 0.2}"/>
+    <rect width="320" height="360" fill="#FFF6EC" opacity="${stage === 'kitten' ? 0.34 : 0.26}"/>
   </g>
   <ellipse cx="160" cy="333" rx="${(86 * bs).toFixed(1)}" ry="${(13 * bs).toFixed(1)}" fill="#000" opacity=".13"/>
   <ellipse cx="160" cy="150" rx="126" ry="126" fill="url(#${u}-glow)" opacity=".45"/>
@@ -735,7 +735,7 @@
     ${cheekRuff}
     ${tufts}
     ${cowlick}
-    <circle cx="${H.x}" cy="${H.y}" r="${H.r}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
+    <circle cx="${H.x}" cy="${H.y}" r="${H.r}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".38"/>
     ${faceSVG(cat, g, eye1, eye2, outline, fill, stage, closed)}
     ${p.hairless ? `<g stroke="${shade(fill, 14)}" stroke-width="1.3" opacity=".45"><path d="M134 118 q10-8 18-3"/><path d="M168 115 q10-6 18 3"/><path d="M124 240 q8 10 0 20"/></g>` : ''}
   </g>
