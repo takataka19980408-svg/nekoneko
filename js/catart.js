@@ -299,8 +299,10 @@
     return `--collar-x:${c.x}%;--collar-y:${c.y}%;--collar-w:${c.w}%;--collar-r:${c.r}deg;`;
   }
 
-  function collarHTML() {
-    return `<span class="collar" id="collarBadge" aria-hidden="true">
+  function collarHTML(idName) {
+    /* 同じ画面に複数の猫を出す（図鑑の一覧など）ときは id を省く */
+    const idAttr = (idName === false || idName === null) ? '' : ` id="${idName || 'collarBadge'}"`;
+    return `<span class="collar"${idAttr} aria-hidden="true">
       <svg viewBox="0 0 120 52">
         <defs>
           <linearGradient id="collarBandG" x1="0" y1="0" x2="0" y2="1">
@@ -352,6 +354,33 @@
     </div>`;
   }
 
+  /* ---------- 静止画（図鑑の過去の猫生：一覧のサムネイル・詳細のイラスト） ----------
+     その子の最終的な姿（成長後ステージ＋首輪・猫又・招き猫）を1枚で再現する。
+     type は assets/cats のタイプ名（actorHTML と同じ絵柄）。 */
+  function stillHTML(type, opts) {
+    opts = opts || {};
+    const t = (typeof type === 'string' && type) ? type : 'tabby';
+    const stage = opts.stage === 'kitten' ? 'kitten' : 'adult';
+    const cls = ['cat-still', stage === 'kitten' ? 'is-kitten' : 'is-adult'];
+    if (opts.collar) cls.push('is-collar');
+    if (opts.nekomata) cls.push('is-nekomata');
+    if (opts.maneki) cls.push('is-maneki');
+    if (opts.senior) cls.push('is-senior');
+    if (opts.cls) cls.push(opts.cls);
+    return `<div class="${cls.join(' ')}" data-type="${escapeAttr(t)}" style="${collarVars(t, stage)}">
+      <span class="nekomata-tail" aria-hidden="true"><svg viewBox="0 0 90 150">
+        <path d="M22 146 C-2 112 10 74 42 58 C64 47 70 28 62 8" fill="none" stroke="#7FB4FF" stroke-width="9" stroke-linecap="round" opacity=".95"/>
+        <path d="M22 146 C-2 112 10 74 42 58 C64 47 70 28 62 8" fill="none" stroke="#DCEBFF" stroke-width="3.4" stroke-linecap="round"/>
+        <circle cx="62" cy="8" r="4.4" fill="#BFE0FF"/>
+      </svg></span>
+      <span class="maneki-cushion" aria-hidden="true"></span>
+      <span class="maneki-koban k1" aria-hidden="true">💰</span>
+      <span class="maneki-koban k2" aria-hidden="true">🪙</span>
+      <img class="still-img" src="${imgPath(t, stage)}" alt="${escapeAttr(opts.alt || '猫')}" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+      ${collarHTML(false)}
+    </div>`;
+  }
+
   /* ホームのプレビュー */
   function heroHTML(cat) {
     const t = cat ? typeFor(cat) : 'tabby';
@@ -369,7 +398,7 @@
     ASSET_DIR, ASSET_V, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
     typeFor, assetPath, imgPath, assetStage, patternType, colorFamily,
     sceneKeyFor, sceneLabel, sceneClassOf, particlesFor, particlesHTML,
-    statsFor, statsHTML, bubbleFor, collarHTML, actorHTML, heroHTML,
+    statsFor, statsHTML, bubbleFor, collarHTML, actorHTML, stillHTML, heroHTML,
     COLLAR, collarFor, collarVars
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

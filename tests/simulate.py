@@ -682,6 +682,154 @@ def main():
         print(f"  {c['rarity']:3s} {c['speciesName']} / {c['regionName']} / {c['ageLabel']} / "
               f"母数 {c['pop']:.1f} / 確率 {c['prob']*100:.6f}%")
 
+    # ---- 過去の猫生（図鑑のフル記録） ----
+    print("\n--- 過去の猫生フル記録（図鑑アルバム） ---")
+    album = json.loads(ctx.eval("""
+      (function(){
+        var out = {err: 0, last: null, rows: [], bad: []};
+        var dex = CATAPP.emptyDex();
+        var made = [];
+        for (var s = 1; s <= 45; s++) {
+          var c = CATGACHA.rollCat(s * 7717 + 11);
+          try {
+            for (var i = 0; i < c.story.length; i++) {
+              var st = c.story[i];
+              if (st.kind === 'death') break;
+              if (st.choice && st.chosen == null) CATGACHA.applyChoice(c, i, i % 2);
+            }
+            CATAPP.record(dex, c);
+            made.push(c);
+          } catch (e) { out.err++; out.last = String(e && e.stack || e); }
+        }
+        var newest = made[made.length - 1];
+        out.count = dex.albums.length;
+        out.max = CATAPP.ALBUM_MAX;
+        out.historyCount = dex.history.length;
+        out.total = dex.total;
+        out.newestFirst = dex.albums[0].name === newest.name && dex.albums[0].speciesName === newest.speciesName;
+        out.idsUnique = (function(){ var o = {}; var dup = 0;
+          dex.albums.forEach(function(a){ if (o[a.id]) dup++; o[a.id] = 1; }); return dup; })();
+        out.listHtml = CATAPP.albumListHTML(dex);
+        out.listCards = (out.listHtml.match(/data-album="/g) || []).length;
+        out.listHasBack = out.listHtml.indexOf('album-back') >= 0;
+        /* 全記録を検証（プロフィール・ログ・詳細HTML） */
+        var needKeys = ['id','at','name','region','speciesName','kind','pattern','gender','eyeColor',
+          'rarity','probability','ageYears','deathReason','adopted','bossCat','nekomata','maneki',
+          'finalStage','stats','art','logs'];
+        dex.albums.forEach(function(rec, ri){
+          needKeys.forEach(function(k){ if (!(k in rec)) out.bad.push('missing:' + k + '@' + ri); });
+          if (!Array.isArray(rec.logs) || !rec.logs.length) { out.bad.push('logs@' + ri); return; }
+          var src = made[made.length - 1 - ri].story;
+          if (rec.logs.length !== src.length) out.bad.push('loglen@' + ri);
+          if (rec.logs[0].kind !== 'birth') out.bad.push('log0@' + ri);
+          if (rec.logs[rec.logs.length - 1].kind !== 'death') out.bad.push('logend@' + ri);
+          for (var j = 0; j < rec.logs.length; j++) {
+            var g = rec.logs[j];
+            if (!g.ageLabel || !g.title || !g.text) out.bad.push('empty@' + ri + ':' + j);
+            if (j && g.age < rec.logs[j-1].age) out.bad.push('order@' + ri + ':' + j);
+            var st2 = src[j];
+            if (st2.choice) {
+              if (st2.chosen == null) out.bad.push('choice@' + ri + ':' + j);
+              else if (g.pickedLabel !== st2.choice.options[st2.chosen].label) out.bad.push('pick@' + ri + ':' + j);
+            } else if (g.pickedLabel != null) out.bad.push('nopick@' + ri + ':' + j);
+          }
+          if (typeof rec.art.type !== 'string' || !rec.art.type) out.bad.push('arttype@' + ri);
+          if (!(rec.stats.energy >= 0 && rec.stats.energy <= 100)) out.bad.push('stats@' + ri);
+          if (['kitten','adult','senior'].indexOf(rec.finalStage) < 0) out.bad.push('stage@' + ri);
+          var ser = JSON.stringify(rec);
+          if (ser.indexOf('undefined') >= 0 || ser.indexOf('NaN') >= 0) out.bad.push('json@' + ri);
+          var dh = CATAPP.albumDetailHTML(rec);
+          if (dh.indexOf('← 一覧に戻る') < 0) out.bad.push('back@' + ri);
+          if (dh.indexOf('undefined') >= 0 || dh.indexOf('NaN') >= 0) out.bad.push('html@' + ri);
+          rec.logs.forEach(function(g){
+            if (dh.indexOf(g.text) < 0) out.bad.push('text@' + ri);
+            if (g.pickedLabel && dh.indexOf(g.pickedLabel) < 0) out.bad.push('pickhtml@' + ri);
+          });
+          if (dh.indexOf(rec.name) < 0 || dh.indexOf(rec.speciesName) < 0) out.bad.push('who@' + ri);
+          if (dh.indexOf('最期のステータス') < 0) out.bad.push('statbox@' + ri);
+        });
+        /* サンプル（先頭の猫生）の詳細HTMLとリスト */
+        out.sample = CATAPP.albumDetailHTML(dex.albums[0]);
+        out.sampleLogs = dex.albums[0].logs.length;
+        out.sampleName = dex.albums[0].name;
+        out.sampleStatStep = dex.albums[0].logs.length;
+        out.sampleChoice = dex.albums[0].logs.filter(function(g){ return g.pickedLabel; }).length;
+        out.sampleBytes = JSON.stringify(dex.albums[0]).length;
+        out.plainBytes = (function(){
+          var small = CATAPP.emptyDex();
+          CATAPP.record(small, made[0]);
+          return JSON.stringify(small).length;
+        })();
+        return JSON.stringify(out);
+      })()
+    """))
+    print(f"  記録数: {album['count']}匹（上限 {album['max']}） / 累計 {album['total']}匹 / 最近の猫生 {album['historyCount']}件")
+    print(f"  1匹あたりの保存量: 約{album['sampleBytes']/1024:.1f}KB（図鑑全体 {album['plainBytes']/1024:.1f}KB） / 詳細 {album['sampleLogs']}歩・2択{album['sampleChoice']}回")
+    check(album["err"] == 0, f"記録の作成で例外 {album['err']} 件")
+    if album["err"]:
+        print("   last:", (album["last"] or "")[:400])
+    check(album["count"] == album["max"], f"保持数が上限({album['max']})になっていない: {album['count']}")
+    check(album["newestFirst"], "新しい猫生が先頭になっていない")
+    check(album["idsUnique"] == 0, f"記録IDが重複: {album['idsUnique']}件")
+    check(album["listCards"] == album["count"], f"一覧のカード数が記録数と違う: {album['listCards']}")
+    check(not album["listHasBack"], "一覧に戻るボタンが出ている")
+    check(not album["bad"], f"フル記録の不備 {len(album['bad'])}件: {album['bad'][:6]}")
+    check("album-step" in album["sample"] and "album-timeline" in album["sample"], "詳細にタイムラインがない")
+    check(album["sampleName"] in album["sample"], "詳細に名前がない")
+
+    # ---- 旧セーブデータ互換（albums / logs が無くても動く） ----
+    print("\n--- 旧セーブデータ互換 ---")
+    legacy = json.loads(ctx.eval("""
+      (function(){
+        var old = {total: 2, species: {'coat:kijitora': 2}, countries: {jp: 2}, mutations: {},
+          rarities: {N: 2}, maxAge: 12,
+          history: [{name: 'タマ', species: '茶トラ', region: '日本', rarity: 'N', age: 12, at: 1, adopted: false}]};
+        localStorage = { _v: {}, getItem: function(k){ return this._v[k] || null; },
+          setItem: function(k, v){ this._v[k] = v; } };
+        localStorage.setItem('catgacha.dex.v1', JSON.stringify(old));
+        var d = CATAPP.loadDex();
+        var out = {};
+        out.albums = Array.isArray(d.albums) ? d.albums.length : 'nope';
+        out.listHtml = CATAPP.buildDexHTML(d, 'albums', null);
+        out.listEmpty = out.listHtml.indexOf('まだ過去の猫生はありません') >= 0;
+        /* logs の無い古い記録でも詳細が壊れない */
+        var bare = {id: 'old1', at: 1, name: 'ミケ', speciesName: '三毛', region: {flag: '🇯🇵', name: '日本'},
+          kind: '雑種', rarity: 'R', ageYears: 5, probability: 1e-5, population: 12000,
+          art: {type: 'calico', stage: 'adult'}};
+        var dh = CATAPP.albumDetailHTML(bare);
+        out.bareHtml = dh;
+        out.bareOk = dh.indexOf('まだ記録されていません') >= 0 && dh.indexOf('undefined') < 0
+          && dh.indexOf('NaN') < 0 && dh.indexOf('享年') >= 0;
+        /* 旧データでも記録を足せる */
+        var c = CATGACHA.rollCat(4242);
+        CATAPP.record(d, c);
+        out.after = d.albums.length;
+        out.saved = (localStorage.getItem('catgacha.dex.v1') || '').indexOf('albums') >= 0;
+        /* 容量切迫：保存が失敗し続けても古い記録を削って必ず1匹は残す */
+        var quota = { _v: {}, fail: true,
+          getItem: function(k){ return this._v[k] || null; },
+          setItem: function(k, v){
+            if (this.fail && String(v).length > 4000) { var e = new Error('quota'); e.name = 'QuotaExceededError'; e.code = 22; throw e; }
+            this._v[k] = v;
+          } };
+        localStorage = quota;
+        var big = CATAPP.emptyDex();
+        for (var i = 0; i < 6; i++) CATAPP.record(big, CATGACHA.rollCat(900 + i * 31));
+        out.quotaAlbums = big.albums.length;
+        out.quotaSaved = !!quota.getItem('catgacha.dex.v1');
+        out.quotaTrimmed = !!(big.albums[0] && (big.albums[0].trimmed || big.albums.length === 1));
+        return JSON.stringify(out);
+      })()
+    """))
+    print(f"  旧データ: albums={legacy['albums']} / 空の案内={legacy['listEmpty']} / 記録追加後={legacy['after']} / 保存={legacy['saved']}")
+    print(f"  容量切迫時: 残った記録 {legacy['quotaAlbums']}匹 / 保存={legacy['quotaSaved']}")
+    check(legacy["albums"] == 0, "旧データでalbumsが空になっていない")
+    check(legacy["listEmpty"], "記録が無いときに案内が出ない")
+    check(legacy["bareOk"], "logsの無い旧記録の詳細が壊れる")
+    check(legacy["after"] == 1 and legacy["saved"], "旧データに記録を足して保存できない")
+    check(legacy["quotaSaved"], "容量切迫時に何も保存できない")
+    check(legacy["quotaAlbums"] >= 1, "容量切迫で記録が全部消えた（1匹は残す）")
+
     try:
         ctx.close()
     except Exception:

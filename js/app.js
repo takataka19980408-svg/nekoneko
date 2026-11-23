@@ -14,11 +14,19 @@
   const RARITY_JP = { N: 'ノーマル', R: 'レア', SR: 'スーパーレア', SSR: 'ダブルレア', UR: 'ウルトラレア' };
   const STAGE_JP = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
 
+  /* 過去の猫生（フル記録）の保持数。1匹あたり数〜20KBなので、40匹で数100KBに収まる。 */
+  const ALBUM_MAX = 40;
+  const CAUSE_JP = {
+    early: '早すぎる別れ', illness: '病気', accident: '事故', natural: '大往生',
+    starve: '飢え', fight: 'ケンカ', human: '人の手', pinch: '不慮の事故',
+    nekomata: '猫又', maneki: '看板猫'
+  };
+
   /* ---------- 図鑑データ ---------- */
   function emptyDex() {
     return {
       total: 0, species: {}, countries: {}, mutations: {}, rarities: {},
-      maxAge: 0, best: null, rarest: null, history: [],
+      maxAge: 0, best: null, rarest: null, history: [], albums: [],
       adopted: 0, bossCount: 0, nekomata: 0, maneki: 0,
       ach: {}, longest: null
     };
@@ -28,11 +36,61 @@
       const raw = root.localStorage && root.localStorage.getItem(KEY);
       if (!raw) return emptyDex();
       const d = JSON.parse(raw);
-      return Object.assign(emptyDex(), d);
+      const dex = Object.assign(emptyDex(), d);
+      /* 旧セーブ（albums が無い／壊れている）でも落ちないように */
+      if (!Array.isArray(dex.albums)) dex.albums = [];
+      if (!Array.isArray(dex.history)) dex.history = [];
+      dex.albums = dex.albums.filter(a => a && typeof a === 'object');
+      return dex;
     } catch (e) { return emptyDex(); }
   }
+
+  function isQuotaError(e) {
+    if (!e) return false;
+    const name = String(e.name || '');
+    const msg = String(e.message || e);
+    return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED'
+      || e.code === 22 || e.code === 1014 || /quota/i.test(msg);
+  }
+
+  /* 保存。容量が溢れたら「古い猫生の記録」から削って再保存する。 */
   function saveDex(dex) {
-    try { root.localStorage && root.localStorage.setItem(KEY, JSON.stringify(dex)); } catch (e) { /* private mode */ }
+    if (!dex || !root.localStorage) return dex;
+    if (!Array.isArray(dex.albums)) dex.albums = [];
+    if (!Array.isArray(dex.history)) dex.history = [];
+    let guard = 0;
+    let step = 0;
+    while (guard++ < 200) {
+      try {
+        root.localStorage.setItem(KEY, JSON.stringify(dex));
+        return dex;
+      } catch (e) {
+        if (!isQuotaError(e)) return dex;   /* プライベートモード等は保存をあきらめる */
+        if (dex.albums.length > 1) { dex.albums.pop(); continue; }        /* 古い猫生から削る */
+        if (dex.albums.length === 1 && step === 0) {
+          /* 最後の1匹は残し、途中の歩みを間引く（生まれた日と最期は残す） */
+          step = 1;
+          const a = dex.albums[0];
+          const logs = Array.isArray(a.logs) ? a.logs : [];
+          a.logs = logs.length > 10
+            ? logs.filter((_, i) => i === 0 || i === logs.length - 1 || i % 2 === 0)
+            : logs;
+          a.trimmed = true;
+          continue;
+        }
+        if (dex.albums.length === 1 && step === 1) {
+          /* それでも無理なら、歩みを諦めてプロフィールだけ残す */
+          step = 2;
+          dex.albums[0].logs = [];
+          dex.albums[0].trimmed = true;
+          continue;
+        }
+        if (dex.albums.length === 1) { dex.albums.pop(); continue; }
+        if (dex.history.length) { dex.history.pop(); continue; }
+        return dex;
+      }
+    }
+    return dex;
   }
 
   const CATALOG = E.dexCatalog();
@@ -43,6 +101,105 @@
     const c = Object.keys(dex.countries || {}).length;
     const m = Object.keys(dex.mutations || {}).length;
     return s + c + m;
+  }
+
+  /* ---------- 過去の猫生（フル記録） ----------
+     1匹の猫生を、生まれた日から最期までそのまま残す。
+     ・プロフィール／最終ステータス／イラスト再現用の最小パラメータ
+     ・logs: 実際に歩んだ全ステップ（年齢・季節・節目・見出し・本文・選んだ2択） */
+  function albumId(cat) {
+    const t = (typeof Date !== 'undefined' && Date.now) ? Date.now() : 0;
+    return 'c' + t.toString(36) + '-' + (((cat && cat.seed) || 0) >>> 0).toString(36);
+  }
+
+  function stepBadge(cat, i) {
+    const step = cat.story[i];
+    const out = [];
+    if (step.kind === 'birth') out.push('🐾 生まれた日');
+    else if (step.kind === 'death') out.push('🌈 最期');
+    else if (step.kind === 'adopt') out.push(step.maneki ? '🏮 お店に迎えられた日' : '🏡 拾われた日');
+    else if (step.kind === 'evolve') out.push('🔮 猫又になった日');
+    else {
+      const ms = E.milestoneAt(cat.story, i);
+      if (ms) out.push(ms.icon + ' ' + ms.label);
+    }
+    const f = formAt(cat, i);
+    if (f === 'nekomata' && step.kind !== 'evolve') out.push('🔮 猫又');
+    if (f === 'maneki' && step.kind !== 'adopt') out.push('🏮 招き猫');
+    if (step.choice && step.chosen != null) {
+      const o = step.choice.options[step.chosen];
+      if (o && o.effect && o.effect.boss) out.push('👑 ボス猫');
+    }
+    return out.join(' / ');
+  }
+
+  function albumLogs(cat) {
+    return (cat.story || []).map((s, i) => {
+      const pick = (s.choice && s.chosen != null) ? s.choice.options[s.chosen] : null;
+      return {
+        age: Math.round((Number(s.age) || 0) * 100) / 100,
+        ageLabel: s.ageLabel || '',
+        stage: s.stage || '',
+        kind: s.kind || 'event',
+        season: s.season || '',
+        badge: stepBadge(cat, i),
+        title: s.title || '',
+        text: s.text || '',
+        pickedLabel: pick ? pick.label : null,
+        pickedAuto: pick ? !!s.autoPicked : false,
+        pickedText: pick ? (pick.text || '') : null
+      };
+    });
+  }
+
+  function albumEntry(cat) {
+    const story = cat.story || [];
+    const last = story[story.length - 1] || { stage: 'adult' };
+    const st = E.statsAt(cat, story.length - 1) || { energy: 0, food: 0, luck: 0 };
+    const cls = cat.klass === 'wild' ? '野生' : cat.route === 'purebred' ? '純血種' : '雑種';
+    const stage = last.stage === 'kitten' ? 'kitten' : last.stage === 'senior' ? 'senior' : 'adult';
+    return {
+      v: 1,
+      id: albumId(cat),
+      at: (typeof Date !== 'undefined' && Date.now) ? Date.now() : 0,
+      name: cat.name || '',
+      region: {
+        flag: (cat.region && cat.region.flag) || '🌍',
+        name: placeText(cat),
+        bucket: (cat.region && cat.region.bucket) || '',
+        key: (cat.country && cat.country.key) || ''
+      },
+      speciesName: cat.speciesName || '',
+      speciesKey: cat.speciesKey || '',
+      sciName: cat.sciName || '',
+      kind: cls,
+      route: cat.route || '',
+      klass: cat.klass || '',
+      pattern: (cat.pattern && cat.pattern.name) || cat.speciesName || '',
+      breed: (cat.breed && cat.breed.name) || '',
+      gender: (D.SEX_LABEL && D.SEX_LABEL[cat.sex]) || '',
+      eyeColor: eyeText(cat),
+      eyeHex: cat.eyeColor || '',
+      rarity: cat.rarity || 'N',
+      probability: cat.probability || 0,
+      population: cat.population || 0,
+      ageYears: Number(cat.ageYears) || 0,
+      deathReason: cat.deathCause || last.cause || '',
+      caption: cat.caption || '',
+      statusLabel: cat.statusLabel || '',
+      adopted: !!cat.adopted,
+      bossCat: !!cat.bossCat,
+      nekomata: !!cat.nekomata,
+      maneki: !!cat.maneki,
+      finalStage: stage,
+      stats: { energy: st.energy, food: st.food, luck: st.luck },
+      art: {
+        type: A.typeFor(cat), stage: stage === 'kitten' ? 'kitten' : 'adult',
+        collar: !!cat.adopted, nekomata: !!cat.nekomata, maneki: !!cat.maneki,
+        senior: stage === 'senior'
+      },
+      logs: albumLogs(cat)
+    };
   }
 
   function record(dex, cat) {
@@ -72,6 +229,10 @@
       adopted: !!cat.adopted, boss: !!cat.bossCat, nekomata: !!cat.nekomata, maneki: !!cat.maneki
     });
     dex.history = dex.history.slice(0, 12);
+    /* 猫生のフル記録（図鑑の「過去の猫生」） */
+    if (!Array.isArray(dex.albums)) dex.albums = [];
+    dex.albums.unshift(albumEntry(cat));
+    while (dex.albums.length > ALBUM_MAX) dex.albums.pop();
     saveDex(dex);
     return dex;
   }
@@ -406,7 +567,132 @@
     </div>`;
   }
 
-  function buildDexHTML(dex, tab) {
+  /* ---------- 図鑑：過去の猫生（一覧・詳細） ---------- */
+  function albumFlagsHTML(rec) {
+    const out = [];
+    if (rec.nekomata) out.push(['🔮', '猫又']);
+    else if (rec.maneki) out.push(['🏮', '招き猫']);
+    if (rec.bossCat) out.push(['👑', 'ボス猫']);
+    if (rec.adopted) out.push(['🏡', rec.maneki ? 'お店の子' : '家族の子']);
+    return out.map(b => `<span class="album-flag">${b[0]} ${b[1]}</span>`).join('');
+  }
+
+  function albumStill(rec, cls) {
+    const art = rec && rec.art ? rec.art : {};
+    return A.stillHTML(art.type, {
+      stage: art.stage, collar: art.collar || rec.adopted,
+      nekomata: art.nekomata || rec.nekomata, maneki: art.maneki || rec.maneki,
+      senior: !!art.senior, alt: (rec && rec.name) || '猫', cls: cls
+    });
+  }
+
+  function albumCardHTML(rec) {
+    const reg = rec.region || {};
+    const kind = rec.kind || '';
+    const coat = rec.breed ? kind + '・' + rec.breed : kind;
+    const ageY = Number(rec.ageYears) || 0;
+    const stats = rec.stats || null;
+    return `<button class="album-card" data-album="${rec.id}" aria-label="${rec.name}の猫生を開く">
+      <span class="album-thumb">${albumStill(rec, 'is-thumb')}</span>
+      <span class="album-info">
+        <span class="album-name">${rec.name || '名もなき猫'}<span class="rarity r-${rec.rarity || 'N'}">${rec.rarity || 'N'}</span></span>
+        <span class="album-sub">${reg.flag || '🌍'} ${reg.name || ''}</span>
+        <span class="album-line">${rec.speciesName || ''}${coat ? '・' + coat : ''}</span>
+        <span class="album-line">🌈 享年 <b>${ageText(ageY)}</b>${stats ? `　❤️${stats.energy} 🐟${stats.food} 🍀${stats.luck}` : ''}</span>
+        <span class="album-flags">${albumFlagsHTML(rec)}</span>
+      </span>
+      <span class="album-arrow" aria-hidden="true">›</span>
+    </button>`;
+  }
+
+  function albumListHTML(dex) {
+    const list = (dex && Array.isArray(dex.albums)) ? dex.albums : [];
+    if (!list.length) {
+      return `<p class="empty-note">まだ過去の猫生はありません。1匹の猫を最後まで見届けると、その子のイラスト・プロフィール・生まれた日から最期までの歩みが、まるごとここに残ります。</p>`;
+    }
+    return `<p class="album-lead">📖 ${list.length}匹の猫生が残っています。タップすると、生まれた日から最期までをそのまま読み返せます。</p>
+      <div class="album-list">${list.map(albumCardHTML).join('')}</div>`;
+  }
+
+  function albumStepHTML(log) {
+    const season = log.season ? `<span class="album-season">${E.seasonEmoji(log.season)}${E.seasonLabel(log.season)}</span>` : '';
+    const badge = log.badge ? `<span class="album-step-badge">${log.badge}</span>` : '';
+    const title = log.kind === 'birth' ? '生まれた日'
+      : log.kind === 'death' ? '最期'
+      : log.kind === 'adopt' ? (log.title || '拾われた日')
+      : log.kind === 'evolve' ? (log.title || '猫又になる')
+      : (log.title ? '【' + log.title + '】' : '');
+    const pick = log.pickedLabel
+      ? `<div class="album-pick"><span class="album-pick-tag">🐾 選んだ：${log.pickedLabel}</span>${log.pickedAuto ? '<span class="album-pick-auto">おまかせ</span>' : ''}</div>${log.pickedText ? `<p class="album-pick-text">${log.pickedText}</p>` : ''}`
+      : '';
+    return `<li class="album-step kind-${log.kind}">
+      <span class="album-step-dot" aria-hidden="true"></span>
+      <div class="album-step-body">
+        <div class="album-step-head">
+          <span class="album-step-age">${log.ageLabel || ageText(log.age)}</span>${season}${badge}
+        </div>
+        ${title ? `<b class="album-step-title">${title}</b>` : ''}
+        <p class="album-step-text">${log.text || ''}</p>
+        ${pick}
+      </div>
+    </li>`;
+  }
+
+  function albumDetailHTML(rec) {
+    if (!rec) return '<p class="empty-note">この猫生の記録は見つかりませんでした。</p>';
+    const reg = rec.region || {};
+    const cls = rec.klass === 'wild' ? '野生' : rec.route === 'purebred' ? '純血種' : '雑種';
+    const coatKey = rec.klass === 'wild' ? '種' : rec.route === 'purebred' ? '品種' : '毛柄';
+    const coatVal = rec.klass === 'wild'
+      ? rec.speciesName + (rec.sciName ? '（' + rec.sciName + '）' : '')
+      : (rec.breed || rec.pattern || rec.speciesName);
+    const cause = CAUSE_JP[rec.deathReason] || '';
+    const ageY = Number(rec.ageYears) || 0;
+    const rows = [
+      ['国・地域', `${reg.flag || '🌍'} ${reg.name || ''}`],
+      ['種別', cls],
+      [coatKey, coatVal],
+      ['性別', rec.gender || '—'],
+      ['目の色', rec.eyeColor || '—'],
+      ['珍しさ', `${rec.rarity}（${E.formatProb(rec.probability || 0)}）`],
+      ['境遇', rec.statusLabel || '—'],
+      ['享年', `${ageText(ageY)}${cause ? '（' + cause + '）' : ''}`]
+    ].map(r => `<div class="who-row"><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
+    const stats = rec.stats || { energy: 0, food: 0, luck: 0 };
+    const logs = Array.isArray(rec.logs) ? rec.logs : [];
+    const timeline = logs.length
+      ? `<ol class="album-timeline">${logs.map(albumStepHTML).join('')}</ol>`
+      : '<p class="empty-note">この子の歩みは、まだ記録されていません（記録機能ができる前の猫生です）。</p>';
+    const trimNote = rec.trimmed ? '<p class="album-trim-note">※ 端末の容量に合わせて、途中の歩みを間引いて保存しています。</p>' : '';
+    return `<button class="album-back" data-album-back="1">← 一覧に戻る</button>
+      <div class="album-detail">
+        <div class="album-hero">
+          ${albumStill(rec, 'is-hero')}
+          <p class="album-hero-name">🐈 ${rec.name || '名もなき猫'}</p>
+          <p class="album-hero-sub">${reg.flag || '🌍'} ${reg.name || ''} ／ ${rec.speciesName || ''}</p>
+          <div class="album-hero-flags">${albumFlagsHTML(rec)}</div>
+          <p class="album-hero-caption">${rec.caption || ''}</p>
+        </div>
+        <div class="who-card">
+          <p class="who-title">🐾 この子のプロフィール</p>
+          <dl class="who-grid">${rows}</dl>
+          <p class="album-odds">地球約10億匹中の ${E.formatOneIn(rec.probability || 1)} ／ 仲間は ${E.formatCount(rec.population || 1)}</p>
+        </div>
+        <div class="album-final">
+          <span class="album-final-title">🌈 最期のステータス</span>
+          <span class="album-stat">❤️ たいりょく ${stats.energy}</span>
+          <span class="album-stat">🐟 おなか ${stats.food}</span>
+          <span class="album-stat">🍀 うん ${stats.luck}</span>
+        </div>
+        <div class="album-timeline-wrap">
+          <h4 class="album-timeline-head"><span>🐾 生まれた日から、最期まで</span><span>${logs.length}歩</span></h4>
+          ${trimNote}
+          ${timeline}
+        </div>
+      </div>`;
+  }
+
+  function buildDexHTML(dex, tab, albumId) {
     if (tab === 'species') {
       const coats = CATALOG.species.filter(s => s.group === 'coat');
       const breeds = CATALOG.species.filter(s => s.group === 'breed');
@@ -416,6 +702,11 @@
         + groupSection('野生のネコ科（' + wild.length + '種）', wild, dex.species);
     }
     if (tab === 'countries') return groupSection('国・地域（' + CATALOG.countries.length + '）', CATALOG.countries, dex.countries);
+    if (tab === 'albums') {
+      const list = Array.isArray(dex.albums) ? dex.albums : [];
+      const rec = albumId ? list.filter(a => a && a.id === albumId)[0] : null;
+      return rec ? albumDetailHTML(rec) : albumListHTML(dex);
+    }
     if (tab === 'mutations') {
       const rows = CATALOG.mutations.map(m => {
         const c = dex.mutations[m.key] || 0;
@@ -452,14 +743,22 @@
       ['図鑑コンプ率', got + ' / ' + TOTAL_TARGETS + '（' + pct + '%）'],
       ['実績', achGot + ' / ' + E.ACHIEVEMENTS.length]
     ].map(r => `<li><span>${r[0]}</span><span>${r[1]}</span></li>`).join('');
-    const hist = dex.history.map(h => {
+    const albums = Array.isArray(dex.albums) ? dex.albums : [];
+    const hist = dex.history.map((h, i) => {
       const mark = h.nekomata ? '🔮' : h.maneki ? '🏮' : h.boss ? '👑' : h.adopted ? '🏡' : '';
-      return `<li><span>${mark ? mark + ' ' : ''}${h.rarity}・${h.species}（${h.region}）</span><span>${ageText(h.age)}</span></li>`;
+      const rec = albums[i];
+      /* 同じ順番（新しい順）で積まれているので、名前と種別が一致するときだけ詳細に飛ばす */
+      const link = (rec && rec.name === h.name && rec.speciesName === h.species) ? rec.id : null;
+      const row = `<span>${mark ? mark + ' ' : ''}${h.rarity}・${h.species}（${h.region}）</span><span>${ageText(h.age)}${link ? ' ›' : ''}</span>`;
+      return link
+        ? `<li class="record-link" data-album="${link}" role="button" tabindex="0">${row}</li>`
+        : `<li>${row}</li>`;
     }).join('');
     return `<div class="dex-section"><h4><span><span class="ico">🏆</span>実績・称号</span><span>${achGot}/${E.ACHIEVEMENTS.length}</span></h4>
         <div class="ach-grid">${cells}</div></div>
       <div class="dex-section"><h4><span>📊 これまでのきろく</span></h4><ul class="record-list">${records}</ul></div>
-      ${hist ? `<div class="dex-section"><h4><span>最近の猫生</span></h4><ul class="record-list">${hist}</ul></div>` : ''}
+      ${hist ? `<div class="dex-section"><h4><span>最近の猫生</span><span>タップで記録を開く</span></h4><ul class="record-list record-list--link">${hist}</ul>
+        <p class="album-hint">同じ猫生のフル記録は、タブの「📖 過去の猫生」からいつでも読み返せます。</p></div>` : ''}
       ${dex.total === 0 ? '<p class="empty-note">まだ一度も猫生を歩いていません。ガチャを回すと、ここに猫がたまっていきます。</p>' : ''}`;
   }
 
@@ -472,7 +771,8 @@
       dex: loadDex(), current: null, rolling: false, tab: 'species', step: 0,
       picked: {}, recorded: false, shownStage: null, shownScene: null, taps: 0, adopted: false,
       auto: true, speed: 1, autoTimer: null, newAch: [], shownForm: null, rulerKey: null, msShown: {},
-      started: false, choiceTimer: null, choiceLeft: null, choiceStart: 0, autoPicked: false
+      started: false, choiceTimer: null, choiceLeft: null, choiceStart: 0, autoPicked: false,
+      albumId: null, albumFrom: null
     };
 
     const el = {
@@ -918,7 +1218,10 @@
       stopChoiceClock();
       state.choiceLeft = null;
       hideChoiceClock();
+      const autoPick = !!state.autoPicked;
       const fx = E.applyChoice(cat, idx, i);
+      /* 放っておいて選ばれたのか（おまかせ）、読んで選んだのかを記録に残す */
+      if (step.chosen === i) step.autoPicked = autoPick;
       state.extraDelay = !state.autoPicked;
       state.autoPicked = false;
       renderStory();
@@ -1018,12 +1321,16 @@
     /* --- 図鑑 --- */
     function renderDex() {
       el.dexSummary.innerHTML = dexSummaryHTML(state.dex);
-      el.dexBody.innerHTML = buildDexHTML(state.dex, state.tab);
+      el.dexBody.innerHTML = buildDexHTML(state.dex, state.tab, state.albumId);
+      if (el.dexBody && el.dexBody.scrollTop) el.dexBody.scrollTop = 0;
       document.querySelectorAll('.tab').forEach(t => {
-        t.classList.toggle('is-active', t.dataset.tab === state.tab);
+        const on = t.dataset.tab === state.tab;
+        t.classList.toggle('is-active', on);
+        if (t.getAttribute) t.setAttribute('aria-selected', on ? 'true' : 'false');
       });
     }
     function openDex() {
+      state.albumId = null;
       renderDex();
       el.dexModal.hidden = false;
       document.body.style.overflow = 'hidden';
@@ -1033,12 +1340,39 @@
       document.body.style.overflow = '';
     }
 
+    /* 過去の猫生：一覧 ↔ 詳細 */
+    function openAlbum(id) {
+      const list = Array.isArray(state.dex.albums) ? state.dex.albums : [];
+      if (!id || !list.some(a => a && a.id === id)) return false;
+      state.albumFrom = state.tab;
+      state.tab = 'albums';
+      state.albumId = id;
+      renderDex();
+      return true;
+    }
+    function closeAlbum() {
+      state.albumId = null;
+      renderDex();
+    }
+
     el.openDex.addEventListener('click', openDex);
     el.toDexBtn.addEventListener('click', openDex);
     el.closeDex.addEventListener('click', closeDex);
     el.dexModal.addEventListener('click', (e) => { if (e.target === el.dexModal) closeDex(); });
+    if (el.dexBody && el.dexBody.addEventListener) {
+      el.dexBody.addEventListener('click', (ev) => {
+        const t = ev && ev.target;
+        if (!t || typeof t.closest !== 'function') return;
+        if (t.closest('[data-album-back]')) { closeAlbum(); return; }
+        const hit = t.closest('[data-album]');
+        if (hit && hit.getAttribute) {
+          const id = hit.getAttribute('data-album');
+          if (id && !openAlbum(id)) { /* 記録が見つからないときは一覧のまま */ }
+        }
+      });
+    }
     document.querySelectorAll('.tab').forEach(t => {
-      t.addEventListener('click', () => { state.tab = t.dataset.tab; renderDex(); });
+      t.addEventListener('click', () => { state.tab = t.dataset.tab; state.albumId = null; renderDex(); });
     });
 
     root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el.dexModal.hidden) closeDex(); });
@@ -1063,6 +1397,9 @@
     root.CATAPP.start = startStory;
     root.CATAPP.render = renderStory;
     root.CATAPP.pendingChoice = pendingChoice;
+    root.CATAPP.openAlbum = openAlbum;
+    root.CATAPP.closeAlbum = closeAlbum;
+    root.CATAPP.renderDex = renderDex;
   }
 
   root.CATAPP = Object.assign(root.CATAPP || {}, {
@@ -1070,7 +1407,9 @@
     achievement, record, unlockAchievements, loadDex, emptyDex, eyeName, bornLine,
     nameplateHTML, profileHTML, rareCardHTML, eyeText, progressHTML,
     TOTAL_TARGETS, CATALOG, formAt, achBurstHTML,
-    buildResultHTML: function (cat) { return stepCardHTML(cat, 0, {}); }
+    buildResultHTML: function (cat) { return stepCardHTML(cat, 0, {}); },
+    albumEntry, albumLogs, albumListHTML, albumDetailHTML, albumCardHTML,
+    albumStepHTML, albumFlagsHTML, albumStill, saveDex, ALBUM_MAX, CAUSE_JP
   });
   init();
 })(typeof globalThis !== 'undefined' ? globalThis : this);

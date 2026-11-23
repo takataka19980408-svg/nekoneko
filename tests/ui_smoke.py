@@ -38,7 +38,7 @@ El.prototype.addEventListener = function(ev, fn){
   __handlers[this.id + ':' + ev].push(fn);
 };
 function __tabs(){
-  return ['species','countries','mutations','achievements'].map(function(t){
+  return ['species','countries','mutations','achievements','albums'].map(function(t){
     var e = new El('tab-' + t);
     e.dataset.tab = t;
     return e;
@@ -561,6 +561,112 @@ def main():
     ctx.eval("__handlers['closeDex:click'][0]()")
     print("モーダル:", ctx.eval("document.getElementById('dexModal').hidden"))
 
+    # --- 図鑑：「過去の猫生」タブ（一覧 → 詳細 → 戻る） ---
+    print("\n--- 図鑑：過去の猫生 ---")
+    dex_albums = json.loads(ctx.eval("""
+      (function(){
+        var d = CATAPP.state.dex;
+        return JSON.stringify({
+          count: (d.albums || []).length,
+          logs: d.albums[0] ? d.albums[0].logs.length : 0,
+          id: d.albums[0] ? d.albums[0].id : null,
+          name: d.albums[0] ? d.albums[0].name : null,
+          texts: d.albums[0] ? d.albums[0].logs.map(function(g){ return g.text; }) : [],
+          picks: d.albums[0] ? d.albums[0].logs.filter(function(g){ return g.pickedLabel; }).length : 0,
+          ageYears: d.albums[0] ? d.albums[0].ageYears : 0
+        });
+      })()
+    """))
+    print("記録:", {k: dex_albums[k] for k in ("count", "logs", "picks", "ageYears")})
+    if dex_albums["count"] != 1:
+        print("[NG] 猫生完了後にフル記録が保存されていない")
+        return 1
+    if dex_albums["logs"] < 4:
+        print("[NG] フル記録の歩みが少なすぎる:", dex_albums["logs"])
+        return 1
+
+    saved_dex = ctx.eval("localStorage.getItem('catgacha.dex.v1')")
+    if '"albums"' not in saved_dex or '"logs"' not in saved_dex:
+        print("[NG] フル記録がlocalStorageに保存されていない")
+        return 1
+    print("保存サイズ:", len(saved_dex), "bytes（albums/logs を含む）")
+
+    ctx.eval("CATAPP.state.tab='albums'; __handlers['openDex:click'][0]()")
+    lst_html = ctx.eval("document.getElementById('dexBody').innerHTML")
+    for need in ("album-list", 'data-album="', "album-thumb", "享年", "assets/cats/", "過去の猫生"):
+        if need not in lst_html and need != "過去の猫生":
+            print("[NG] 過去の猫生の一覧に不足:", need)
+            return 1
+    if "undefined" in lst_html or "NaN" in lst_html:
+        print("[NG] 一覧に undefined/NaN")
+        return 1
+    if "album-back" in lst_html:
+        print("[NG] 一覧なのに戻るボタンがある")
+        return 1
+    print("一覧:", len(lst_html), "文字 / カード", lst_html.count('data-album='), "枚")
+
+    # カードをタップ（dexBody のクリック委譲）して詳細へ
+    ctx.eval("""
+      var __hit = { getAttribute: function(k){ return k === 'data-album' ? %s : null; },
+        closest: function(sel){ return sel.indexOf('back') >= 0 ? null : __hit; } };
+      __handlers['dexBody:click'][0]({target: __hit});
+    """ % json.dumps(dex_albums["id"]))
+    det = ctx.eval("document.getElementById('dexBody').innerHTML")
+    if ctx.eval("CATAPP.state.albumId") != dex_albums["id"]:
+        print("[NG] カードをタップしても詳細が開かない")
+        return 1
+    for need in ("← 一覧に戻る", "album-detail", "album-hero", "この子のプロフィール", "最期のステータス",
+                 "album-timeline", "生まれた日から、最期まで", dex_albums["name"]):
+        if need not in det:
+            print("[NG] 詳細に不足:", need)
+            return 1
+    if "undefined" in det or "NaN" in det:
+        print("[NG] 詳細に undefined/NaN")
+        return 1
+    missing = [t for t in dex_albums["texts"] if t not in det]
+    if missing:
+        print("[NG] 詳細に載っていない歩み:", len(missing), missing[:1])
+        return 1
+    if dex_albums["picks"] and "選んだ：" not in det:
+        print("[NG] 詳細に選んだ2択が出ていない")
+        return 1
+    print("詳細:", len(det), "文字 / 全", len(dex_albums["texts"]), "歩を表示 / 2択", dex_albums["picks"], "回")
+
+    # 「← 一覧に戻る」
+    ctx.eval("""
+      var __back = { getAttribute: function(){ return null; },
+        closest: function(sel){ return sel.indexOf('back') >= 0 ? __back : null; } };
+      __handlers['dexBody:click'][0]({target: __back});
+    """)
+    if ctx.eval("CATAPP.state.albumId") is not None:
+        print("[NG] 戻るで一覧に戻らない")
+        return 1
+    back_html = ctx.eval("document.getElementById('dexBody').innerHTML")
+    if 'data-album="' not in back_html or "album-detail" in back_html:
+        print("[NG] 戻った後に一覧が出ていない")
+        return 1
+    print("戻る: 一覧に復帰 OK")
+
+    # 実績タブの「最近の猫生」から詳細に飛べる
+    ctx.eval("CATAPP.state.tab='achievements'; CATAPP.state.albumId=null; __handlers['openDex:click'][0]()")
+    ach_now = ctx.eval("document.getElementById('dexBody').innerHTML")
+    if 'record-link' not in ach_now or 'data-album="' not in ach_now:
+        print("[NG] 実績タブの最近の猫生が詳細にリンクしていない")
+        return 1
+    ctx.eval("""
+      var __jump = { getAttribute: function(k){ return k === 'data-album' ? %s : null; },
+        closest: function(sel){ return sel.indexOf('back') >= 0 ? null : __jump; } };
+      __handlers['dexBody:click'][0]({target: __jump});
+    """ % json.dumps(dex_albums["id"]))
+    if ctx.eval("CATAPP.state.tab") != "albums" or ctx.eval("CATAPP.state.albumId") != dex_albums["id"]:
+        print("[NG] 最近の猫生から詳細に飛べない")
+        return 1
+    if "album-detail" not in ctx.eval("document.getElementById('dexBody').innerHTML"):
+        print("[NG] 最近の猫生からの遷移先が詳細でない")
+        return 1
+    print("最近の猫生 → 詳細: OK")
+    ctx.eval("CATAPP.state.albumId=null; CATAPP.state.tab='species'; __handlers['closeDex:click'][0]()")
+
     # localStorage 保存（実績も入っている）
     saved = ctx.eval("localStorage.getItem('catgacha.dex.v1')")
     print("保存データ:", "あり" if saved else "なし", "(" + str(len(saved or "")) + " bytes)")
@@ -752,6 +858,44 @@ def main():
         if key not in achcheck["b"]:
             print("[NG] 実績条件が不足:", key)
             return 1
+
+    # --- 旧セーブデータ互換（logs/albums が無い図鑑でも動く） ---
+    print("\n--- 旧セーブデータ互換 ---")
+    ctx2 = quickjs.Context()
+    ctx2.eval(DOM_STUB)
+    legacy_dex = {
+        "total": 2, "species": {"coat:kijitora": 2}, "countries": {"jp": 2}, "mutations": {},
+        "rarities": {"N": 2}, "maxAge": 12,
+        "history": [{"name": "タマ", "species": "茶トラ", "region": "日本", "rarity": "N", "age": 12,
+                     "at": 1, "adopted": False, "boss": False, "nekomata": False, "maneki": False}],
+        "ach": {"first": 1},
+    }
+    ctx2.eval("localStorage.setItem('catgacha.dex.v1', " + json.dumps(json.dumps(legacy_dex, ensure_ascii=False)) + ");")
+    for f in JS_FILES + ["js/app.js"]:
+        ctx2.eval((ROOT / f).read_text(encoding="utf-8"))
+    ctx2.eval("CATAPP.state.tab='albums'; __handlers['openDex:click'][0]()")
+    old_list = ctx2.eval("document.getElementById('dexBody').innerHTML")
+    print("旧データの albums:", ctx2.eval("JSON.stringify(CATAPP.state.dex.albums)"))
+    if "まだ過去の猫生はありません" not in old_list:
+        print("[NG] 旧データで「過去の猫生」の空表示が出ない")
+        return 1
+    if "undefined" in old_list:
+        print("[NG] 旧データで undefined が出る")
+        return 1
+    # 旧データのままでも1匹の猫生を完了して記録を足せる
+    ctx2.eval("__handlers['closeDex:click'][0](); __handlers['rollBtn:click'][0](); __runTimers(100); CATAPP.skipAll();")
+    if ctx2.eval("CATAPP.state.dex.albums.length") != 1:
+        print("[NG] 旧データに記録を追加できない")
+        return 1
+    ctx2.eval("CATAPP.state.tab='albums'; __handlers['openDex:click'][0]()")
+    old_new = ctx2.eval("document.getElementById('dexBody').innerHTML")
+    if "album-card" not in old_new or "undefined" in old_new:
+        print("[NG] 旧データに追加した記録の一覧が不正")
+        return 1
+    if "albums" not in (ctx2.eval("localStorage.getItem('catgacha.dex.v1')") or ""):
+        print("[NG] 旧データに追加した記録が保存されていない")
+        return 1
+    print("旧データ互換: OK（空表示 → 記録追加 → 保存）")
 
     print("\n結果:", "PASS" if not failures else f"FAIL ({len(failures)}件)")
     return 0 if not failures else 1
