@@ -639,8 +639,8 @@
     const earPink = stage === 'kitten' ? '#F5AEB6' : '#E8A0A6';
 
     const cowlick = stage === 'kitten' ? `
-      <g stroke="${outline}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".3">
-        <path d="M154 76 q6 -10 14 -6"/><path d="M160 74 q2 -10 10 -10"/>
+      <g stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".28">
+        <path d="M152 84 q6 -11 15 -7"/><path d="M160 82 q2 -11 11 -11"/>
       </g>` : '';
 
     const legs = `
