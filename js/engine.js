@@ -438,73 +438,730 @@
     senior: ['しずかな日々', 'ゆっくりと', '日だまりの午後', 'のんびりと']
   };
 
-  /* ---------- 選択イベント ---------- */
+  /* ---------- 年齢の目盛り（「年をとる」の実感） ---------- */
+  const AGE_TICKS = [
+    { age: 0, label: '誕生', pos: 0 },
+    { age: 4 / 12, label: '4か月', pos: 7 },
+    { age: 1, label: '1歳', pos: 18 },
+    { age: 3, label: '3歳', pos: 34 },
+    { age: 6, label: '6歳', pos: 50 },
+    { age: 10, label: '10歳', pos: 66 },
+    { age: 15, label: '15歳', pos: 82 },
+    { age: 20, label: '20歳', pos: 93 },
+    { age: 25, label: '25歳', pos: 100 }
+  ];
+
+  const MILESTONES = [
+    { key: 'm1', age: 1, icon: '🎂', tone: 'cake', label: '1歳・こどもから大人へ' },
+    { key: 'm3', age: 3, icon: '🎂', tone: 'cake', label: '3歳・いちばん元気なころ' },
+    { key: 'm6', age: 6, icon: '🍂', tone: 'cake', label: '6歳・落ち着いてきた' },
+    { key: 'm10', age: 10, icon: '🎂', tone: 'senior', label: '10歳・シニア期' },
+    { key: 'm15', age: 15, icon: '👑', tone: 'great', label: '15歳・ご長寿猫' },
+    { key: 'm20', age: 20, icon: '🌟', tone: 'legend', label: '20歳・伝説の猫' },
+    { key: 'm50', age: 50, icon: '🔮', tone: 'nekomata', label: '50歳・ぬしと呼ばれる' },
+    { key: 'm100', age: 100, icon: '🔮', tone: 'nekomata', label: '100歳・猫又' }
+  ];
+
+  /* 猫又ルートだけは100年スケールの目盛りを使う */
+  const NEKOMATA_TICKS = [
+    { age: 0, label: '誕生', pos: 0 },
+    { age: 1, label: '1歳', pos: 10 },
+    { age: 10, label: '10歳', pos: 28 },
+    { age: 20, label: '20歳', pos: 46 },
+    { age: 50, label: '50歳', pos: 68 },
+    { age: 80, label: '80歳', pos: 86 },
+    { age: 100, label: '100歳', pos: 100 }
+  ];
+
+  function ageTicks(cat) {
+    return cat && cat.nekomata ? NEKOMATA_TICKS : AGE_TICKS;
+  }
+
+  function ageScalePercent(age, ticks) {
+    const T = ticks && ticks.length ? ticks : AGE_TICKS;
+    const a = Math.max(0, Number(age) || 0);
+    if (a <= 0) return 0;
+    for (let i = 1; i < T.length; i++) {
+      const p = T[i - 1], q = T[i];
+      if (a <= q.age) {
+        const t = (a - p.age) / ((q.age - p.age) || 1);
+        return Math.round((p.pos + (q.pos - p.pos) * clamp(t, 0, 1)) * 10) / 10;
+      }
+    }
+    return 100;
+  }
+
+  function milestonesPassed(age) {
+    const a = Number(age) || 0;
+    return MILESTONES.filter(m => a >= m.age);
+  }
+
+  function milestoneAt(story, idx) {
+    if (!story || idx < 0 || idx >= story.length) return null;
+    const cur = Number(story[idx].age) || 0;
+    const prev = idx > 0 ? (Number(story[idx - 1].age) || 0) : -1;
+    let hit = null;
+    MILESTONES.forEach(m => { if (cur >= m.age && prev < m.age) hit = m; });
+    return hit;
+  }
+
+  /* ---------- ステータス（❤️たいりょく / 🐟おなか / 🍀うん） ----------
+     一歩ごとの素の値（base）と、2択で選んだ効果の合計で決まる。
+     選択の結果はその場だけでなく、その後の値にも効き続ける。 */
+  function statRng(cat, salt) {
+    return mulberry32(((cat.seed >>> 0) ^ Math.imul((salt | 0) + 1, 2654435761)) >>> 0);
+  }
+
+  function baseStats(cat) {
+    const muts = (cat.mutations || []).filter(m => !m.cosmetic).length;
+    return { energy: 74, food: 58, luck: clamp(48 + muts * 7, 24, 92) };
+  }
+
+  function driftFor(stage, home, rng) {
+    const j = n => (rng() * 2 - 1) * n;
+    return {
+      energy: (stage === 'kitten' ? 2 : stage === 'adult' ? -3 : -6) + j(4) + (home ? 3 : 0),
+      food: j(9) + (home ? 4 : -1),
+      luck: j(6) + (home ? 3 : 0) + (stage === 'senior' ? 2 : 0)
+    };
+  }
+
+  function roundStats(s) {
+    return {
+      energy: Math.round(clamp(s.energy, 4, 100)),
+      food: Math.round(clamp(s.food, 4, 100)),
+      luck: Math.round(clamp(s.luck, 4, 100))
+    };
+  }
+
+  function applyBaseStats(cat, from) {
+    const story = cat.story;
+    if (!story || !story.length) return;
+    const h = statRng(cat, 0x51ed);
+    let s = null;
+    let start = 1;
+    if (from && from.stats) {
+      s = Object.assign({}, from.stats);
+      start = (from.idx == null ? 0 : from.idx) + 1;
+    } else {
+      s = baseStats(cat);
+      story[0].stats = roundStats(s);
+    }
+    for (let i = start; i < story.length; i++) {
+      const st = story[i];
+      const home = cat.adoptIndex != null && i >= cat.adoptIndex;
+      if (st.kind === 'death') {
+        s = { energy: s.energy - 18, food: s.food - 12, luck: s.luck + 2 };
+      } else {
+        const d = driftFor(st.stage, home, h);
+        s = { energy: s.energy + d.energy, food: s.food + d.food, luck: s.luck + d.luck };
+      }
+      st.stats = roundStats(s);
+      s = st.stats;
+    }
+  }
+
+  function statsAt(cat, idx) {
+    if (!cat || !cat.story || !cat.story.length) return { energy: 50, food: 50, luck: 50 };
+    const i = Math.round(clamp(idx == null ? 0 : idx, 0, cat.story.length - 1));
+    const base = cat.story[i].stats || baseStats(cat);
+    const out = { energy: base.energy, food: base.food, luck: base.luck };
+    for (let k = 0; k <= i; k++) {
+      const st = cat.story[k];
+      if (!st.choice || st.chosen == null) continue;
+      const opt = st.choice.options[st.chosen];
+      const fx = (opt && opt.effect) || {};
+      out.energy += fx.energy || 0;
+      out.food += fx.food || 0;
+      out.luck += fx.luck || 0;
+    }
+    return roundStats(out);
+  }
+
+  function peakStats(cat) {
+    const peak = { energy: 0, food: 0, luck: 0 };
+    const n = cat && cat.story ? cat.story.length : 0;
+    for (let i = 0; i < n; i++) {
+      const s = statsAt(cat, i);
+      peak.energy = Math.max(peak.energy, s.energy);
+      peak.food = Math.max(peak.food, s.food);
+      peak.luck = Math.max(peak.luck, s.luck);
+    }
+    return peak;
+  }
+
+  /* ---------- 選択イベント ----------
+     cozy = ちょっとした日常の2択（小さなステータス変化）
+     fate = 猫生の分かれ道（寿命・境遇・ボス猫への道が変わる） */
   const CHOICE_EVENTS = [
+    /* --- 日常の2択 --- */
     {
-      scene: 'home', min: 0.2, max: 20,
+      id: 'box', tier: 'cozy', scene: 'home', min: 0.2, max: 20,
       question: '段ボール箱を見つけた！',
       options: [
-        { label: 'すぐ入る', text: 'すっぽり収まって、そのままお昼寝。世界でいちばんちょうどいい箱だった。' },
-        { label: 'まわりを一周する', text: '念入りに匂いを確かめてから、結局入った。箱には勝てない。' }
+        { label: 'すぐ入る', text: 'すっぽり収まって、そのままお昼寝。世界でいちばんちょうどいい箱だった。', effect: { energy: 6, luck: 2 } },
+        { label: 'まわりを一周する', text: '念入りに匂いを確かめてから、結局入った。箱には勝てない。', effect: { food: 2, luck: 4 } }
       ]
     },
     {
-      scene: 'any', min: 0.4, max: 22,
+      id: 'butterfly', tier: 'cozy', scene: 'any', min: 0.4, max: 22,
       question: '窓辺にちょうちょがとまった。',
       options: [
-        { label: 'そっと見つめる', text: 'しっぽの先だけが小さく動く。しばらく、時間が止まったみたいだった。' },
-        { label: '飛びつく', text: '見事に空振り。でもそのあと、ひとりで満足そうに毛づくろいをした。' }
+        { label: 'そっと見つめる', text: 'しっぽの先だけが小さく動く。しばらく、時間が止まったみたいだった。', effect: { energy: 4, luck: 3 } },
+        { label: '飛びつく', text: '見事に空振り。でもそのあと、ひとりで満足そうに毛づくろいをした。', effect: { energy: -4, food: 6, luck: 2 } }
       ]
     },
     {
-      scene: 'home', min: 0.5, max: 22,
+      id: 'family', tier: 'cozy', scene: 'home', min: 0.5, max: 22,
       question: '家族がなんだか元気がないみたい。',
       options: [
-        { label: '膝に乗る', text: '何も言わずに膝で丸くなった。それだけで、部屋の空気が少しやわらかくなった。' },
-        { label: '頭をこつんとする', text: 'おでこをそっとぶつけたら、手がゆっくり頭に置かれた。' }
+        { label: '膝に乗る', text: '何も言わずに膝で丸くなった。それだけで、部屋の空気が少しやわらかくなった。', effect: { luck: 8, energy: 3 } },
+        { label: '頭をこつんとする', text: 'おでこをそっとぶつけたら、手がゆっくり頭に置かれた。', effect: { luck: 7, energy: 2 } }
       ]
     },
     {
-      scene: 'home', min: 0.3, max: 24,
+      id: 'fish', tier: 'cozy', scene: 'home', min: 0.3, max: 24,
       question: 'おやつの干し魚が届いた！',
       options: [
-        { label: 'すぐ食べる', text: '夢中でたいらげて、食べ終わってから手をぺろぺろした。' },
-        { label: 'あとで食べる', text: '大事に隠しておいたのに、次の日には場所を忘れていた。' }
+        { label: 'すぐ食べる', text: '夢中でたいらげて、食べ終わってから手をぺろぺろした。', effect: { food: 14, energy: 4 } },
+        { label: 'あとで食べる', text: '大事に隠しておいたのに、次の日には場所を忘れていた。', effect: { food: 8, luck: 3 } }
       ]
     },
     {
-      scene: 'out', min: 0.3, max: 20,
+      id: 'crevice', tier: 'cozy', scene: 'out', min: 0.3, max: 20,
       question: '岩のすき間に、なにかが光っている。',
       options: [
-        { label: '近づいてみる', text: '小さな虫だった。すぐ逃げられたけど、なんだか得した気分。' },
-        { label: '見なかったことにする', text: '危ないものは追わない。それが長生きのコツ。' }
+        { label: '近づいてみる', text: '小さな虫だった。すぐ逃げられたけど、なんだか得した気分。', effect: { food: 8, luck: 2 } },
+        { label: '見なかったことにする', text: '危ないものは追わない。それが長生きのコツ。', effect: { luck: 5, energy: 2 } }
       ]
     },
     {
-      scene: 'out', min: 1, max: 20,
+      id: 'stranger', tier: 'cozy', scene: 'out', min: 1, max: 20,
       question: '見知らぬ猫が、こちらの場所を見ている。',
       options: [
-        { label: 'にらみ返す', text: '一歩も引かずに見返したら、相手が先に目をそらした。' },
-        { label: '場所をゆずる', text: 'ゆずった場所の近くで、思ったよりいい昼寝スポットを見つけた。' }
+        { label: 'にらみ返す', text: '一歩も引かずに見返したら、相手が先に目をそらした。', effect: { energy: -3, luck: 4 } },
+        { label: '場所をゆずる', text: 'ゆずった場所の近くで、思ったよりいい昼寝スポットを見つけた。', effect: { luck: 7, energy: 2 } }
       ]
     },
     {
-      scene: 'any', min: 0.2, max: 24,
+      id: 'rain', tier: 'cozy', scene: 'any', min: 0.2, max: 24,
       question: '雨が降ってきた。',
       options: [
-        { label: '外に出てみる', text: '足先だけ濡らして、すぐ引き返した。やっぱり屋根の下がいちばん。' },
-        { label: '軒先から見る', text: 'しずくの落ちる音を、しっぽをゆらしながら眺めていた。' }
+        { label: '外に出てみる', text: '足先だけ濡らして、すぐ引き返した。やっぱり屋根の下がいちばん。', effect: { energy: -3, luck: 3 } },
+        { label: '軒先から見る', text: 'しずくの落ちる音を、しっぽをゆらしながら眺めていた。', effect: { energy: 5, luck: 2 } }
       ]
     },
     {
-      scene: 'any', min: 2, max: 24,
+      id: 'midnight', tier: 'cozy', scene: 'any', min: 2, max: 24,
       question: '夜中、あたりがしんと静まり返っている。',
       options: [
-        { label: '走り回る', text: '誰も見ていない時間に全力疾走。これが猫の正義。' },
-        { label: '丸くなって寝る', text: 'いちばん柔らかい場所を選んで、朝までぐっすり。' }
+        { label: '走り回る', text: '誰も見ていない時間に全力疾走。これが猫の正義。', effect: { energy: -6, luck: 6, food: -2 } },
+        { label: '丸くなって寝る', text: 'いちばん柔らかい場所を選んで、朝までぐっすり。', effect: { energy: 9, food: 2 } }
+      ]
+    },
+
+    /* --- 猫生の分かれ道 --- */
+    {
+      id: 'hand', tier: 'fate', scene: 'any', min: 0.25, max: 20,
+      routes: ['street', 'community', 'feral'], notAdopted: true,
+      question: '目の前に、人がしゃがんで手を差し伸べている。',
+      options: [
+        { label: 'そっと手に乗る', text: 'においを確かめて、そっと手のひらに前足をのせた。その夜から、家の中で眠る。', effect: { adopt: true, luck: 12, energy: 10 } },
+        { label: '自分で生きていく', text: '一歩下がって、塀の上へ。悪くない選択だと、ずっと思っていた。', effect: { life: 1, luck: 6, energy: 2 } }
+      ]
+    },
+    {
+      id: 'headlight', tier: 'fate', scene: 'out', min: 0.5, max: 20,
+      routes: ['street', 'community', 'feral'],
+      question: '夜道で、車のライトがこちらを照らした。',
+      options: [
+        { label: '一気に走り抜ける', text: '地面を蹴って、光の中へ。', effect: { risk: 0.45, energy: -8, luck: -2 } },
+        { label: '足を止めて待つ', text: '動かずに、息をひそめて待った。車はゆっくり通り過ぎていった。', effect: { life: 1, luck: 8, energy: 2 } }
+      ]
+    },
+    {
+      id: 'winter', tier: 'fate', scene: 'any', min: 0.8, max: 30, notZoo: true,
+      question: '冬が近い。今夜はとにかく冷える。',
+      options: [
+        { label: '人の家の軒下に入る', text: '勝手口のすき間から、あたたかい匂いがした。ここで冬を越そう。', effect: { energy: 8, luck: 5, life: 1 } },
+        { label: '仲間と寄り添って眠る', text: '何匹もで丸くなって、毛の奥で眠った。朝まで誰も凍えなかった。', effect: { luck: 10, energy: 6 } }
+      ]
+    },
+    {
+      id: 'boss', tier: 'fate', scene: 'any', min: 1, max: 20,
+      routes: ['street', 'community', 'feral'],
+      question: 'この一帯を仕切る大きな猫が、じっとこちらを見ている。',
+      options: [
+        { label: '正面から挑む', text: '低く唸って、一歩も引かなかった。その日から、この道の主は自分になった。', effect: { boss: true, life: 2, luck: 10, energy: -6 } },
+        { label: '静かに道をあける', text: '頭を下げて、ゆっくり横を通った。それもまた、ひとつの生き方。', effect: { luck: 4, energy: 3 } }
+      ]
+    },
+    {
+      id: 'vet', tier: 'fate', scene: 'home', min: 0.9, max: 30, homeOnly: true,
+      question: '獣医さんが、少し長く生きられそうな薬をくれた。',
+      options: [
+        { label: 'おとなしく飲む', text: 'いやな顔をしながらも、全部飲んだ。次の検査は、少しだけいい数字だった。', effect: { life: 2, energy: 6, luck: 2 } },
+        { label: '隠してしまう', text: '知らないふりをして、薬をソファの下に押し込んだ。', effect: { luck: 3, energy: -2 } }
+      ]
+    },
+    {
+      id: 'whiskers', tier: 'fate', scene: 'any', min: 1.5, max: 22,
+      routes: ['street', 'community', 'feral'],
+      question: '立派なひげが、生えそろってきた。',
+      options: [
+        { label: '堂々と歩く', text: '朝の道路の真ん中を、ゆっくり歩いてみた。誰も止めなかった。', effect: { luck: 8, life: 1 } },
+        { label: 'まだ隠れて生きる', text: '人の目を避けて、物陰から物陰へ。それが一番安全だ。', effect: { energy: 4, luck: 3 } }
+      ]
+    },
+    {
+      id: 'familyworry', tier: 'fate', scene: 'home', min: 2, max: 30, homeOnly: true,
+      question: '家族が、少し心配そうにこちらを見ている。',
+      options: [
+        { label: '元気なところを見せる', text: '跳ねて、走って、いつもの場所で伸びをした。家族が笑った。', effect: { energy: 8, luck: 6, life: 1 } },
+        { label: 'そっと寄り添う', text: '膝の上で、いつもより長く丸くなっていた。', effect: { luck: 10, energy: 4 } }
+      ]
+    },
+    {
+      id: 'wildshadow', tier: 'fate', scene: 'any', min: 1.5, max: 30,
+      kinds: ['wild'], notZoo: true,
+      question: '縄張りの境目で、大きな影が動いた。',
+      options: [
+        { label: '牙をむく', text: '低い声で唸り、相手の目を見た。影は、ゆっくり下がっていった。', effect: { risk: 0.35, life: 1, luck: 8 } },
+        { label: '身を低くして離れる', text: '気配を消して、風下へ。今日は戦わない。', effect: { energy: 3, luck: 6 } }
+      ]
+    },
+    {
+      id: 'zoocheck', tier: 'fate', scene: 'any', min: 1, max: 30, kinds: ['wild'],
+      routes: ['zoo'],
+      question: '獣医と飼育員が、健康診断に来た。',
+      options: [
+        { label: 'おとなしく受ける', text: '体重計に乗り、口を開けて見せる。飼育員が「いい子だ」と言った。', effect: { life: 2, energy: 4 } },
+        { label: '逃げ回る', text: '寝床の奥まで逃げて、3時間出てこなかった。', effect: { luck: 5, energy: -4 } }
       ]
     }
   ];
+
+  function eventFits(e, age, group, cat, willAdopt) {
+    if (age < e.min || age > e.max) return false;
+    if (e.scene && e.scene !== 'any' && e.scene !== group) return false;
+    if (e.routes && e.routes.indexOf(cat.route) < 0) return false;
+    if (e.kinds && e.kinds.indexOf(cat.klass) < 0) return false;
+    const adopted = willAdopt || cat.adoptIndex != null;
+    if (e.notAdopted && adopted) return false;
+    if (e.adoptedOnly && !adopted) return false;
+    if (e.notZoo && cat.route === 'zoo') return false;
+    if (e.homeOnly && !(cat.route === 'owned' || cat.route === 'purebred' || adopted)) return false;
+    return true;
+  }
+
+  /* スロットに2択をわりあてる。fate を1つ入れ、残りを cozy で埋める。 */
+  function pickChoices(cat, slots, group, willAdopt, rng, skip) {
+    const n = slots.length;
+    if (!n) return {};
+    const order = [];
+    for (let j = 1; j <= n; j++) if (!skip || skip.indexOf(j) < 0) order.push(j);
+    for (let j = order.length - 1; j > 0; j--) {
+      const k = Math.floor(rng() * (j + 1));
+      const t = order[j]; order[j] = order[k]; order[k] = t;
+    }
+    let wanted = n >= 4 ? (chance(0.55, rng) ? 3 : 2) : (chance(0.72, rng) ? 2 : 1);
+    wanted = Math.min(wanted, order.length);
+    const out = {};
+    const used = [];
+    let set = 0;
+
+    const takeFrom = (list, slot) => {
+      const fits = list.filter(e => used.indexOf(e) < 0 && eventFits(e, slots[slot - 1], group, cat, willAdopt));
+      if (!fits.length) return false;
+      const e = fits[Math.floor(rng() * fits.length)];
+      used.push(e);
+      out[slot] = e;
+      set++;
+      return true;
+    };
+
+    /* fate は後半のスロットへ（人生の分かれ道らしく） */
+    if (order.length && chance(0.85, rng)) {
+      const fates = CHOICE_EVENTS.filter(e => e.tier === 'fate');
+      for (let oi = order.length - 1; oi >= 0; oi--) {
+        if (takeFrom(fates, order[oi])) break;
+      }
+    }
+
+    const cozy = CHOICE_EVENTS.filter(e => e.tier === 'cozy');
+    for (let oi = 0; oi < order.length && set < wanted; oi++) {
+      const slot = order[oi];
+      if (out[slot]) continue;
+      takeFrom(cozy, slot);
+    }
+    /* fate が取れなかった猫生には、もう一度だけ fate を試す */
+    if (set < wanted) {
+      const fates = CHOICE_EVENTS.filter(e => e.tier === 'fate');
+      for (let oi = 0; oi < order.length && set < wanted; oi++) {
+        if (out[order[oi]]) continue;
+        takeFrom(fates, order[oi]);
+      }
+    }
+    return out;
+  }
+
+  /* ---------- 寿命が延びたときの「その後」 ---------- */
+  const LATE_EVENTS = {
+    kitten: [
+      'もう少しだけ、こどもの時間が続くことになった。',
+      '小さな体のまま、もうひとつ季節を越える。'
+    ],
+    adult: [
+      '若いころより、少しだけ遠くまで歩かなくなった。それでも毎日、同じ道をたどる。',
+      '知らない子猫が近づいてきて、昔の自分を見るように見送った。',
+      'お気に入りの場所が、いつのまにか日だまりに変わっていた。',
+      '同じ夢を、もう一度見た気がした。'
+    ],
+    senior: [
+      '目が少し白くなって、名前を呼ばれるまで気づかないことが増えた。',
+      'ゆっくり起きて、ゆっくり歩いて、また眠る。そんな一日が続く。',
+      '若い猫に場所をゆずって、自分は一段高いところで眠るようになった。',
+      'ひなたの匂いを胸いっぱいに吸って、長いこと動かなかった。'
+    ]
+  };
+
+  /* ---------- 超レア隠しルート① 猫又（100年） ---------- */
+  const NEKOMATA_EVENTS = [
+    { age: 2.5, text: 'ふつうの子猫として、ふつうに暮らしていた。この時点では、なにもおかしなことはない。' },
+    { age: 6, text: '6歳。毛ヅヤがよすぎる気がするが、家族は「うちの子は元気」で片づけた。' },
+    { age: 12, text: '12歳。獣医がカルテを二度見した。「この子、まだこんなに元気なんですか」。' },
+    { age: 20, text: '20歳。とっくに猫の寿命を超えている。それでも、ごはんは毎日きっちり完食する。' },
+    { age: 35, text: '35歳。近所の人が、この猫に軽く頭を下げるようになった。' },
+    { age: 50, text: '50歳。町内の子どもたちが「ぬし」と呼ぶ。触ろうとすると、すっと避ける。' },
+    { age: 65, text: '65歳。こたつの中で、人の言葉を少し話すようになった。「あったかいのう」。' },
+    { age: 80, text: '80歳。町内会の悩み相談に乗っている。アドバイスは、だいたい「寝るのが一番」。' },
+    { age: 100, text: '100歳。しっぽが2本に分かれた。猫又になった。' }
+  ];
+
+  function shouldNekomata(cat, rng) {
+    if (cat.klass === 'wild' || cat.special) return false;
+    if ((Number(cat.ageYears) || 0) < 15) return false;
+    const luck = baseStats(cat).luck;
+    const p = luck >= 75 ? 0.03 : 0.015;
+    return chance(p, rng);
+  }
+
+  function buildNekomataStory(cat, rng) {
+    cat.nekomata = true;
+    cat.ageYears = 100 + Math.floor(rng() * 5);
+    cat.ageLabel = ageLabel(cat.ageYears);
+    cat.deathCause = 'nekomata';
+
+    const steps = [{
+      kind: 'birth', age: 0, ageLabel: '生まれた日', stage: 'kitten', title: '誕生',
+      text: birthText(cat, rng)
+    }];
+    NEKOMATA_EVENTS.forEach((e, i) => {
+      const stage = stageForAge(e.age);
+      const titles = STORY_TITLES[stage] || STORY_TITLES.adult;
+      steps.push({
+        kind: i === NEKOMATA_EVENTS.length - 1 ? 'evolve' : 'event',
+        age: e.age, ageLabel: ageLabel(e.age), stage: stage,
+        title: i === NEKOMATA_EVENTS.length - 1 ? '猫又になる' : titles[i % titles.length],
+        text: e.text,
+        evolve: i === NEKOMATA_EVENTS.length - 1 ? 'nekomata' : null
+      });
+    });
+    steps.push({
+      kind: 'death', age: cat.ageYears, ageLabel: ageLabel(cat.ageYears), stage: 'senior',
+      title: '最期', cause: 'nekomata',
+      text: 'こたつで将棋を指したあと、ふっと姿を消した。百年の猫生だった。'
+    });
+
+    cat.story = steps;
+    applyBaseStats(cat);
+    cat.caption = '100年を生きた、猫又。町内の悩み相談は、今日も満員御礼。';
+    return steps;
+  }
+
+  /* ---------- 超レア隠しルート② 招き猫 ---------- */
+  const MANEKI_ADOPT = [
+    '商店街の小さな定食屋の店主が、店先で丸くなっていたところを抱き上げた。「うちの看板猫になれ」。',
+    '酒屋の軒先で雨宿りしていたら、おかみさんが「商売繁盛の猫になれ」と赤い座布団を敷いてくれた。',
+    'クリーニング店の人が、レジ横に小さな座布団を置いてくれた。そこが、お店の猫の指定席になった。'
+  ];
+  const MANEKI_EVENTS = [
+    'レジ横の座布団で右手を上げていると、お客さんが次々に写真を撮っていく。売上も少し上がった。',
+    '商店街の福引の前で座っていたら、その日から「この猫に撫でられると当たる」と噂になった。',
+    '店の入り口で、右手を上げてお客さんを呼び込む。手が疲れるので、ときどき左手に交代する。',
+    '小判の形のおもちゃをくわえて店の中を歩き、店主に「縁起がいい」と大喜びされた。'
+  ];
+
+  function manekiRoll(cat, rng) {
+    if (!cat.adopted || cat.klass === 'wild' || cat.maneki) return false;
+    const at = cat.adoptIndex == null ? 0 : cat.adoptIndex;
+    const luck = statsAt(cat, at).luck;
+    if (luck < 50) return false;
+    return chance(0.025, rng);
+  }
+
+  function decorateManeki(cat, rng) {
+    cat.maneki = true;
+    const r = statRng(cat, 0x6d6b);
+    const adoptStep = cat.story[cat.adoptIndex];
+    if (adoptStep) {
+      adoptStep.maneki = true;
+      adoptStep.title = 'お店に迎えられる';
+      adoptStep.adoptTitle = 'お店に迎えられる';
+      adoptStep.text = pick(MANEKI_ADOPT, r);
+      cat.adoptTitle = 'お店に迎えられる';
+      cat.adoptText = adoptStep.text;
+    }
+    /* 看板猫は長生きする */
+    extendLife(cat, 7);
+
+    /* 延びた分の歩みを、店先のコメディに差し替える */
+    const evIdx = [];
+    cat.story.forEach((s, i) => { if (s.kind === 'event' && i > (cat.adoptIndex || 0)) evIdx.push(i); });
+    const shop = MANEKI_EVENTS.slice();
+    evIdx.slice(-2).forEach((i) => {
+      const t = shop.length ? shop.splice(Math.floor(r() * shop.length), 1)[0] : null;
+      if (t) { cat.story[i].text = t; cat.story[i].title = '看板猫'; }
+    });
+
+    const death = cat.story[cat.story.length - 1];
+    if (death && death.kind === 'death') {
+      death.text = 'レジ横の座布団の上で、右手を上げたまま動かなかった。看板猫の最期だった。';
+      death.cause = 'maneki';
+    }
+    cat.deathCause = 'maneki';
+    cat.caption = '商店街の看板猫。右手を上げて、今日もお客さんを呼んでいる。';
+  }
+
+  const PINCH_DEATHS = {
+    free: [
+      '夜の道路を渡りきれなかった。最後に見たのは、まぶしい光だった。',
+      'フェンスのすき間に挟まり、どうしても抜けられなかった。'
+    ],
+    home: [
+      '急に具合が悪くなり、そのまま起き上がれなくなった。',
+      'のどにものが詰まり、家族が気づいた時には遅かった。'
+    ],
+    wild: [
+      '縄張り争いの傷が深く、その夜のうちに息を引き取った。',
+      '崖を踏み外し、二度と立ち上がれなかった。'
+    ],
+    default: ['思わぬ事故にあい、その場で動かなくなった。']
+  };
+
+  /* 2択の「拾われる」で、その場で家族の猫になる */
+  function insertAdopt(cat, idx) {
+    if (cat.adoptIndex != null || cat.adopted) return false;
+    const cur = cat.story[idx];
+    const next = cat.story[idx + 1];
+    const gap = next ? Math.max(0, next.age - cur.age) : 0.2;
+    const a = Math.round((cur.age + gap * 0.5) * 100) / 100;
+    const rng = statRng(cat, 0x77 + idx * 11);
+    const text = pick(ADOPT_TEXTS[cat.route] || ADOPT_TEXTS.street, rng);
+    cat.adopted = true;
+    cat.adoptIndex = idx + 1;
+    cat.adoptTitle = '拾われる';
+    cat.adoptText = text;
+    cat.story.splice(idx + 1, 0, {
+      kind: 'adopt', age: a, ageLabel: ageLabel(a), stage: stageForAge(a),
+      title: '拾われる', adoptTitle: '拾われる', text, adopted: true,
+      stats: Object.assign({}, cur.stats || baseStats(cat))
+    });
+    applyBaseStats(cat, { idx: idx, stats: cur.stats || baseStats(cat) });
+    return true;
+  }
+
+  /* ピンチで命を落とす（ピンチ回避に失敗したとき） */
+  function killAt(cat, idx) {
+    const cur = cat.story[idx];
+    const a = Math.max(0.08, Math.round((Number(cur.age) || 0.08) * 100) / 100);
+    cat.ageYears = a;
+    cat.ageLabel = ageLabel(a);
+    cat.deathCause = 'pinch';
+    cat.earlyDeath = true;
+    const key = cat.klass === 'wild' ? 'wild'
+      : (cat.adoptIndex != null || cat.route === 'owned' || cat.route === 'purebred') ? 'home' : 'free';
+    const rng = statRng(cat, 0x3311 + idx * 7);
+    const text = pick(PINCH_DEATHS[key] || PINCH_DEATHS.default, rng);
+    cat.story = cat.story.slice(0, idx + 1);
+    cat.story.push({
+      kind: 'death', age: a, ageLabel: ageLabel(a), stage: stageForAge(a),
+      title: '最期', text: text, cause: 'pinch',
+      stats: Object.assign({}, cur.stats || baseStats(cat))
+    });
+    cat.caption = buildCaption(cat, rng);
+  }
+
+  /* 寿命 +1〜3年。残りの猫生に新しい歩みを足し、最期を先に延ばす。 */
+  function extendLife(cat, years) {
+    const oldAge = Number(cat.ageYears) || 0;
+    const target = Math.round(Math.min(oldAge + (Number(years) || 0), 32) * 100) / 100;
+    if (target <= oldAge + 0.02) return 0;
+    const added = Math.round((target - oldAge) * 100) / 100;
+    cat.ageYears = target;
+    cat.ageLabel = ageLabel(target);
+    cat.lifeBonus = Math.round(((cat.lifeBonus || 0) + added) * 100) / 100;
+
+    const story = cat.story;
+    if (story[story.length - 1].kind === 'death') story.pop();
+    const last = story[story.length - 1];
+    const rng = statRng(cat, 0x2f1d + story.length * 17);
+    const n = added >= 2.4 ? 2 : 1;
+    const usedTexts = story.map(s => s.text);
+    const extStart = story.length;
+    for (let k = 1; k <= n; k++) {
+      const a = last.age + (target - last.age) * (k / (n + 1));
+      const stage = stageForAge(a);
+      const titles = STORY_TITLES[stage] || STORY_TITLES.adult;
+      const pool = LATE_EVENTS[stage] || LATE_EVENTS.adult;
+      const fresh = pool.filter(t => usedTexts.indexOf(t) < 0);
+      const text = fresh.length ? fresh[Math.floor(rng() * fresh.length)] : pool[Math.floor(rng() * pool.length)];
+      usedTexts.push(text);
+      story.push({
+        kind: 'event', age: Math.round(a * 100) / 100, ageLabel: ageLabel(a), stage,
+        title: titles[(k + story.length) % titles.length], text: text
+      });
+    }
+    const death = deathOf(cat, rng);
+    cat.deathCause = death.cause;
+    story.push({
+      kind: 'death', age: target, ageLabel: ageLabel(target), stage: stageForAge(target),
+      title: '最期', text: death.text, cause: death.cause
+    });
+    cat.caption = buildCaption(cat, rng);
+    applyBaseStats(cat, { idx: extStart - 1, stats: story[extStart - 1].stats });
+    return added;
+  }
+
+  function statChips(fx) {
+    const out = [];
+    if (fx.energy) out.push('❤️' + (fx.energy > 0 ? '+' : '') + fx.energy);
+    if (fx.food) out.push('🐟' + (fx.food > 0 ? '+' : '') + fx.food);
+    if (fx.luck) out.push('🍀' + (fx.luck > 0 ? '+' : '') + fx.luck);
+    return out.join(' ');
+  }
+
+  /* 選んだ2択を、その後の展開に反映する */
+  function applyChoice(cat, idx, optIdx) {
+    const step = cat && cat.story ? cat.story[idx] : null;
+    if (!step || !step.choice) return null;
+    if (step.chosen != null) return step.fx || null;
+    const opt = step.choice.options[optIdx];
+    if (!opt) return null;
+    const fx = opt.effect || {};
+    const out = { chips: statChips(fx), headlines: [], lifeAdded: 0, adopted: false, boss: false, died: false };
+    step.chosen = optIdx;
+
+    if (fx.adopt && cat.adoptIndex == null) {
+      if (insertAdopt(cat, idx)) {
+        out.adopted = true;
+        out.headlines.push('🏡 家族の猫への道が開けた！');
+      }
+    }
+    if (fx.boss && !cat.bossCat) {
+      cat.bossCat = true;
+      cat.bossTitle = 'ボス猫';
+      out.boss = true;
+      out.headlines.push('👑 この街のボスへの道！');
+    }
+    if (fx.life) {
+      const add = extendLife(cat, fx.life);
+      if (add) {
+        out.lifeAdded = add;
+        out.headlines.push('✨ 寿命が延びたかも！（+' + (Math.round(add * 10) / 10) + '年）');
+      }
+    }
+    if (fx.risk) {
+      const r = statRng(cat, 0x7f4a + idx * 31 + optIdx)();
+      if (r < fx.risk) {
+        killAt(cat, idx);
+        out.died = true;
+        out.headlines = ['😿 ピンチに巻き込まれた…'];
+      } else {
+        cat.pinchAvoided = true;
+        out.headlines.push('🍀 間一髪で逃げきった！');
+      }
+    }
+    step.fx = out;
+    return out;
+  }
+
+  /* ---------- 実績・称号 ---------- */
+  const ACHIEVEMENTS = [
+    { key: 'first', icon: '🐾', name: 'はじめての猫生', desc: '1匹の猫生を最後まで見届けた', tone: 'bronze' },
+    { key: 'reinc10', icon: '🔁', name: '転生10回', desc: '10匹の猫生を生きた', tone: 'silver' },
+    { key: 'reinc30', icon: '💫', name: '転生30回', desc: '30匹の猫生を生きた', tone: 'gold' },
+    { key: 'reinc100', icon: '🌌', name: '転生100回', desc: '100匹の猫生を生きた', tone: 'rainbow' },
+    { key: 'adopt', icon: '🏡', name: 'うちの子記念日', desc: '拾われて、家族の猫になった', tone: 'silver' },
+    { key: 'adopt5', icon: '🏠', name: '拾われ上手', desc: '5回、家族に迎えられた', tone: 'gold' },
+    { key: 'freeKing', icon: '👑', name: '自由の王', desc: '野良のまま10歳を超えた', tone: 'gold' },
+    { key: 'boss', icon: '🐯', name: 'この街のボス', desc: 'ボス猫の座をつかんだ', tone: 'gold' },
+    { key: 'great', icon: '🎂', name: '大往生', desc: '15歳以上生きた', tone: 'silver' },
+    { key: 'legend20', icon: '🌟', name: '伝説の20歳', desc: '20歳まで生きた', tone: 'rainbow' },
+    { key: 'quarter', icon: '⭐', name: '四半世紀', desc: '25歳まで生きた', tone: 'rainbow' },
+    { key: 'wildSoul', icon: '🐆', name: '野生の魂', desc: '野生のネコ科に生まれた', tone: 'silver' },
+    { key: 'bigCat', icon: '🦁', name: '大型ネコ科', desc: 'ライオンやトラに生まれた', tone: 'gold' },
+    { key: 'zooStar', icon: '🎪', name: '動物園のスター', desc: '動物園生まれの一生を生きた', tone: 'silver' },
+    { key: 'pure', icon: '📜', name: '血統の誇り', desc: '血統書つきの純血種に生まれた', tone: 'silver' },
+    { key: 'rare', icon: '💎', name: '奇跡のレア', desc: 'SSR以上を引いた', tone: 'gold' },
+    { key: 'ur', icon: '🌈', name: '神引き', desc: 'URを引いた', tone: 'rainbow' },
+    { key: 'all80', icon: '💪', name: 'ステータス全80以上', desc: '❤️🐟🍀がそろって80を超えた', tone: 'gold' },
+    { key: 'dex25', icon: '📖', name: '図鑑25種', desc: '25種類の猫を図鑑に載せた', tone: 'silver' },
+    { key: 'dex50', icon: '📚', name: '図鑑50種', desc: '50種類の猫を図鑑に載せた', tone: 'gold' },
+    { key: 'globe20', icon: '🌍', name: '国めぐり20', desc: '20の国・地域の猫を引いた', tone: 'gold' },
+    { key: 'maleCalico', icon: '🍀', name: 'オスの三毛猫の奇跡', desc: '約3万分の1を引いた', tone: 'rainbow' },
+    { key: 'oddEye', icon: '👁', name: 'オッドアイ', desc: '左右で色のちがう目に生まれた', tone: 'silver' },
+    { key: 'shelter', icon: '🐈', name: '保護施設から', desc: '保護施設生まれの子が家族になった', tone: 'silver' },
+    { key: 'pinch', icon: '🎯', name: '九死に一生', desc: 'ピンチを回避した', tone: 'silver' },
+    { key: 'nekomata', icon: '🔮', name: '百年猫又', desc: '100歳まで生きて猫又になった', tone: 'rainbow' },
+    { key: 'maneki', icon: '🏮', name: '招き猫伝説', desc: 'お店で招き猫に進化した', tone: 'rainbow' }
+  ];
+
+  function achievementDef(key) {
+    for (let i = 0; i < ACHIEVEMENTS.length; i++) if (ACHIEVEMENTS[i].key === key) return ACHIEVEMENTS[i];
+    return null;
+  }
+
+  function evaluateAchievements(ctx) {
+    const c = ctx || {};
+    const cat = c.cat || {};
+    const age = Number(cat.ageYears) || 0;
+    const route = cat.route;
+    const free = route === 'street' || route === 'community' || route === 'feral';
+    const muts = (cat.mutations || []).map(m => m.key);
+    const peak = c.peak || { energy: 0, food: 0, luck: 0 };
+    const got = [];
+    const add = (key, ok) => { if (ok) got.push(key); };
+
+    add('first', (c.total || 0) >= 1);
+    add('reinc10', (c.total || 0) >= 10);
+    add('reinc30', (c.total || 0) >= 30);
+    add('reinc100', (c.total || 0) >= 100);
+    add('adopt', (c.adoptCount || 0) >= 1);
+    add('adopt5', (c.adoptCount || 0) >= 5);
+    add('freeKing', free && age >= 10);
+    add('boss', !!cat.bossCat);
+    add('great', age >= 15);
+    add('legend20', age >= 20);
+    add('quarter', age >= 25);
+    add('wildSoul', cat.klass === 'wild');
+    add('bigCat', cat.speciesGroup === 'big');
+    add('zooStar', route === 'zoo');
+    add('pure', route === 'purebred');
+    add('rare', cat.rarity === 'SSR' || cat.rarity === 'UR');
+    add('ur', cat.rarity === 'UR');
+    add('all80', peak.energy >= 80 && peak.food >= 80 && peak.luck >= 80);
+    add('dex25', (c.speciesCount || 0) >= 25);
+    add('dex50', (c.speciesCount || 0) >= 50);
+    add('globe20', (c.countryCount || 0) >= 20);
+    add('maleCalico', muts.indexOf('male_calico') >= 0);
+    add('oddEye', muts.indexOf('odd_eye') >= 0);
+    add('shelter', !!cat.shelterBorn && !!cat.adopted);
+    add('pinch', !!cat.pinchAvoided || !!c.pinchAvoided);
+    add('nekomata', !!cat.nekomata);
+    add('maneki', !!cat.maneki);
+    return got;
+  }
 
   function storyPool(cat) {
     const out = [];
@@ -581,9 +1238,14 @@
 
   /* ---------- 猫生ストーリー（1ステップずつ歩く） ----------
      野良として生まれた猫は、途中で人に拾われて「おうちの猫」になることがある。
-     その回のイベントを「拾われる」ステップに差し替え、以降は家の中の出来事になる。 */
+     その回のイベントを「拾われる」ステップに差し替え、以降は家の中の出来事になる。
+     2択は cozy（日常）と fate（分かれ道）の2種類。fate は寿命・境遇を変える。 */
   function buildStory(cat, rng) {
     const age = Math.max(0.08, Number(cat.ageYears) || 0.08);
+
+    /* 超レア：ご長寿の猫が、ごく稀に100年を生きる猫又になる */
+    if (shouldNekomata(cat, rng)) return buildNekomataStory(cat, rng);
+
     const total = storyStepCount(age);
     const eventCount = Math.max(1, total - 2);
 
@@ -604,39 +1266,18 @@
       slots.push(a);
     }
 
-    const choiceFor = {};
-    if (eventCount >= 2) {
-      const order = [];
-      for (let j = 1; j <= eventCount; j++) order.push(j);
-      for (let j = order.length - 1; j > 0; j--) {
-        const k = Math.floor(rng() * (j + 1));
-        const t = order[j]; order[j] = order[k]; order[k] = t;
-      }
-      const wanted = chance(0.62, rng) ? 2 : 1;
-      const taken = [];
-      let set = 0;
-      for (let oi = 0; oi < order.length && set < wanted; oi++) {
-        const j = order[oi];
-        const a = slots[j - 1];
-        const fits = CHOICE_EVENTS.filter(ch =>
-          taken.indexOf(ch) < 0 && (ch.scene === 'any' || ch.scene === group) && a >= ch.min && a <= ch.max);
-        if (!fits.length) continue;
-        const ch = fits[Math.floor(rng() * fits.length)];
-        taken.push(ch);
-        choiceFor[j] = ch;
-        set++;
-      }
-    }
-
-    /* 拾われるスロット（2択イベントと重ならないように選ぶ） */
+    /* 拾われるスロット（2択イベントと重ならないように先に決める） */
     let adoptSlot = 0;
     if (adoptionRoll(cat, rng)) {
       const cands = [];
-      for (let i = 1; i <= eventCount; i++) if (!choiceFor[i]) cands.push(i);
+      for (let i = 1; i <= eventCount; i++) cands.push(i);
       const early = cands.filter(i => slots[i - 1] < 3);
       const poolA = early.length ? early : cands;
-      if (poolA.length) adoptSlot = poolA[Math.floor(rng() * poolA.length)];
+      adoptSlot = poolA[Math.floor(rng() * poolA.length)];
     }
+
+    const choiceFor = pickChoices(cat, slots, group, adoptSlot > 0, rng, adoptSlot ? [adoptSlot] : []);
+
     const homePool = adoptSlot ? storyPool(Object.assign({}, cat, { route: 'owned', klass: 'domestic' })) : null;
 
     for (let i = 1; i <= eventCount; i++) {
@@ -665,7 +1306,12 @@
         steps.push({
           kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
           text: ch.question,
-          choice: { question: ch.question, options: ch.options.map(o => ({ label: o.label, text: o.text })) }
+          choice: {
+            id: ch.id, tier: ch.tier,
+            question: ch.question,
+            options: ch.options.map(o => ({ label: o.label, text: o.text, effect: Object.assign({}, o.effect || {}) }))
+          },
+          chosen: null
         });
         continue;
       }
@@ -684,7 +1330,13 @@
       title: '最期', text: death.text, cause: death.cause
     });
 
-    return steps;
+    cat.story = steps;
+    applyBaseStats(cat);
+
+    /* 超レア：🍀運の高い子が、お店に拾われて招き猫になる */
+    if (manekiRoll(cat, rng)) decorateManeki(cat, rng);
+
+    return cat.story;
   }
 
   function buildTimeline(cat, rng) {
@@ -743,7 +1395,13 @@
       out.push({ w: 1.2, min: 1, max: 4, text: '初めてキャットタワーを上りきり、頂上から家族を見下ろして満足げ。' });
       out.push({ w: 1.0, min: 2, max: 7, text: '避妊・去勢手術を受け、その日は一日中ぐったりして過ごす。' });
       out.push({ w: 0.9, min: 2, max: 9, text: '家族が引っ越し、新しい家の匂いを3日かけて確認する。' });
-      out.push({ w: 0.8, min: 3, max: 12, text: '深夜に家中を走り回る「運動会」を開催し、家族を起こす。' });
+      out.push({ w: 0.8, min: 3, max: 12, text: '深夜3時、家中を全力疾走する「大運動会」を開催。家族は全員起きた。' });
+      out.push({ w: 1.0, min: 2, max: 10, text: '飼い主のノートPCのキーボードの上で寝て、謎の文字列をチャットに誤送信してしまった。' });
+      out.push({ w: 1.0, min: 1.5, max: 9, text: '買ったばかりの高級ベッドを無視して、その箱のほうで眠る。' });
+      out.push({ w: 0.9, min: 2, max: 12, text: 'オンライン会議の画面の前を、しっぽを立ててゆっくり横切った。' });
+      out.push({ w: 0.8, min: 3, max: 14, text: '障子の穴を鼻先で広げてから、ばつが悪そうに去っていった。' });
+      out.push({ w: 0.8, min: 4, max: 16, text: '落として転がった枝豆を1粒だけ運んできて、誇らしげに足もとに並べた。' });
+      out.push({ w: 0.7, min: 2, max: 18, text: '宅配便の箱が開く前から、中身より箱に夢中。' });
       out.push({ w: 0.7, min: 5, max: 14, text: '少しずつ高いところに登らなくなり、日の当たる場所を選ぶようになる。' });
       out.push({ w: 0.7, min: 8, max: 18, text: '健康診断で「腎臓の数値が少し高い」と言われ、療法食に切り替わる。' });
       out.push({ w: 0.6, min: 10, max: 22, text: '若い猫にちょっかいを出されても、もう本気で怒らなくなった。' });
@@ -754,6 +1412,8 @@
       out.push({ w: 1.0, min: 1, max: 8, text: '冬の寒さをしのぐため、駐車場のエンジンルームに潜り込む。' });
       out.push({ w: 0.8, min: 2, max: 10, text: '見知らぬ人には絶対に触らせないが、餌やりさんにはお腹を見せる。' });
       out.push({ w: 0.7, min: 3, max: 12, text: '掲示板に「この猫に餌をあげないでください」と書かれる。' });
+      out.push({ w: 0.9, min: 2, max: 14, text: '餌やりさんの自転車の音を、20メートル手前で聞き分けて猛ダッシュする。' });
+      out.push({ w: 0.8, min: 2, max: 12, text: '新しいバイクのシートを、ぜんぶ毛だらけにした。' });
     } else if (r === 'street') {
       out.push({ w: 1.4, min: 0.1, max: 1.1, text: '母猫のお腹の下で、はじめて目を開ける。' });
       out.push({ w: 1.3, min: 0.4, max: 2, text: '母猫とはぐれ、雨の夜に初めてひとりで餌を探す。' });
@@ -761,6 +1421,9 @@
       out.push({ w: 1.0, min: 1, max: 6, text: 'コンビニの店先で、店員がこっそり出してくれるおにぎりにありつく。' });
       out.push({ w: 0.9, min: 1, max: 8, text: '車の下で眠るのが癖になり、何度も危ない目にあう。' });
       out.push({ w: 0.7, min: 2, max: 12, text: '保護活動の人が罠を仕掛け、ケージの中で一日を過ごす。' });
+      out.push({ w: 1.0, min: 1, max: 14, text: 'コンビニの自動ドアの前で、開くたびに中を覗き、閉まるとまた待つ。' });
+      out.push({ w: 0.9, min: 2, max: 12, text: 'ガードレールの上で、いちばん誇らしげな顔をして座ってみせる。' });
+      out.push({ w: 0.6, min: 3, max: 10, text: '一度だけ、犬に勝った。' });
     } else if (r === 'feral') {
       out.push({ w: 1.4, min: 0.2, max: 1.2, text: '茂みの奥で、はじめて外の世界の匂いをかいだ。' });
       out.push({ w: 1.3, min: 0.5, max: 3, text: '人の気配だけで茂みに消える。誰にも触られたことがない。' });
@@ -771,6 +1434,7 @@
       out.push({ w: 1.2, min: 0.5, max: 3, text: '飼育員が名前を呼ぶと、ガラスの前まで歩いてくるようになる。' });
       out.push({ w: 1.0, min: 1, max: 8, text: '毎日決まった時間に肉が運ばれ、食べ残すことすらある。' });
       out.push({ w: 0.8, min: 3, max: 15, text: '種の保存のため、遠くの動物園から見合い相手がやってくる。' });
+      out.push({ w: 0.9, min: 1, max: 12, text: 'ガラスの前に来たお客さんにおしりを向けて寝そべり、それでも人気だった。' });
     }
     return out;
   }
@@ -872,6 +1536,8 @@
   }
 
   function buildCaption(cat, rng) {
+    if (cat.nekomata) return '100年を生きた、猫又。町内の悩み相談は、今日も満員御礼。';
+    if (cat.maneki) return '商店街の看板猫。右手を上げて、今日もお客さんを呼んでいる。';
     const a = Math.floor(cat.ageYears);
     if (cat.klass === 'wild') {
       const tail = cat.route === 'zoo'
@@ -919,6 +1585,11 @@
     mulberry32, newSeed, rollCat, sampleLifespan, buildTimeline, buildStory,
     stageForAge, storyStepCount, STAGES, STAGE_LABEL,
     formatCount, formatProb, formatOneIn, ageText, ageLabel,
-    rarityOf, dexCatalog, RARITY_ORDER, deathOf, buildCaption
+    rarityOf, dexCatalog, RARITY_ORDER, deathOf, buildCaption,
+    /* 年をとる・分岐・やり込み */
+    AGE_TICKS, NEKOMATA_TICKS, ageTicks, ageScalePercent, MILESTONES, milestoneAt, milestonesPassed,
+    statsAt, peakStats, baseStats, statChips,
+    CHOICE_EVENTS, applyChoice, extendLife, insertAdopt, killAt, statRng,
+    ACHIEVEMENTS, achievementDef, evaluateAchievements
   };
 });

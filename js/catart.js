@@ -138,6 +138,7 @@
   }
 
   function sceneKeyFor(cat, idx) {
+    if (cat && cat.maneki && cat.adoptIndex != null && idx != null && idx >= cat.adoptIndex) return 'shop';
     if (cat && cat.adoptIndex != null && idx != null && idx >= cat.adoptIndex) return 'home';
     const sc = (cat && cat.scene) || 'room_warm';
     return sceneClassOf(sc);
@@ -145,22 +146,28 @@
 
   function sceneLabel(key) {
     return {
-      home: 'あたたかいおうち', alley: '路地裏', village: '集落', snow: '雪の街',
+      home: 'あたたかいおうち', shop: 'お店のレジ前', alley: '路地裏', village: '集落', snow: '雪の街',
       savanna: 'サバンナ', jungle: 'ジャングル', forest: '森', desert: '砂漠',
       mountain: '岩山', island: '島', coast: '海辺', zoo: '動物園', temple: '寺院'
     }[key] || 'どこか';
   }
 
   const PARTICLES = {
-    home: ['✨', '🌸', '🎵'], alley: ['💧', '✨'], village: ['🍂', '✨'],
+    home: ['✨', '🌸', '🎵'], shop: ['💰', '✨', '🏮'], alley: ['💧', '✨'], village: ['🍂', '✨'],
     snow: ['❄️', '✨'], savanna: ['🍂', '✨'], jungle: ['🍃', '💧'],
     forest: ['🍂', '🍃'], desert: ['✨', '🌙'], mountain: ['❄️', '✨'],
     island: ['💧', '🌈'], coast: ['💧', '✨'], zoo: ['✨', '🍃'],
-    temple: ['🌸', '🍂'], finale: ['🌈', '✨', '⭐']
+    temple: ['🌸', '🍂'], finale: ['🌈', '✨', '⭐'],
+    nekomata: ['🔮', '🌙', '✨'], maneki: ['💰', '🏮', '✨']
   };
 
   function particlesFor(cat, idx, dead) {
-    if (dead) return PARTICLES.finale;
+    if (dead) {
+      if (cat && cat.nekomata) return PARTICLES.nekomata;
+      if (cat && cat.maneki) return PARTICLES.maneki;
+      return PARTICLES.finale;
+    }
+    if (cat && cat.nekomata && cat.story && idx != null && cat.story[idx] && cat.story[idx].age >= 100) return PARTICLES.nekomata;
     return PARTICLES[sceneKeyFor(cat, idx)] || PARTICLES.home;
   }
 
@@ -190,17 +197,9 @@
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
   function statsFor(cat, idx) {
-    const steps = (cat && cat.story ? cat.story.length : 1) || 1;
-    const t = steps > 1 ? clamp(idx || 0, 0, steps - 1) / (steps - 1) : 0;
-    const seed = (cat && cat.seed) || 1;
-    const ph = hash01(seed, 1) * 6.28;
-    const home = cat && cat.adoptIndex != null && idx != null && idx >= cat.adoptIndex;
-    const muts = cat && cat.mutations ? cat.mutations.length : 0;
-    const dead = cat && cat.story && idx === steps - 1;
-    const energy = clamp(Math.round(82 - t * 34 + Math.sin(ph + t * 4.4) * 5 + (home ? 6 : 0) + (dead ? -14 : 0)), 6, 100);
-    const food = clamp(Math.round(60 + Math.sin(ph * 1.7 + t * 5.6) * 10 + (home ? 14 : 0) + (dead ? -10 : 0)), 4, 100);
-    const luck = clamp(Math.round(48 + muts * 9 + Math.sin(ph * 2.3 + t * 3.1) * 7 + (home ? 10 : 0)), 4, 100);
-    return { energy: energy, food: food, luck: luck };
+    const E = root.CATGACHA;
+    if (E && E.statsAt) return E.statsAt(cat, idx);
+    return { energy: 60, food: 60, luck: 60 };
   }
 
   function statsHTML(cat, idx) {
@@ -259,6 +258,14 @@
     const alt = (cat && (cat.speciesName || cat.name)) || '猫';
     return `<div class="cat-art ${kittenOn ? 'is-kitten' : 'is-adult'}" id="catArt" data-type="${t}">
       <div class="cat-scale">
+        <span class="nekomata-tail" aria-hidden="true"><svg viewBox="0 0 90 150">
+          <path d="M22 146 C-2 112 10 74 42 58 C64 47 70 28 62 8" fill="none" stroke="#7FB4FF" stroke-width="9" stroke-linecap="round" opacity=".95"/>
+          <path d="M22 146 C-2 112 10 74 42 58 C64 47 70 28 62 8" fill="none" stroke="#DCEBFF" stroke-width="3.4" stroke-linecap="round"/>
+          <circle cx="62" cy="8" r="4.4" fill="#BFE0FF"/>
+        </svg></span>
+        <span class="maneki-cushion" aria-hidden="true"></span>
+        <span class="maneki-koban k1" aria-hidden="true">💰</span>
+        <span class="maneki-koban k2" aria-hidden="true">🪙</span>
         <img class="cat-img cat-img--kitten ${kittenOn ? 'is-on' : ''}" id="catImgKitten" src="${ASSET_DIR}${t}-kitten.png" alt="${escapeAttr(alt)}の子猫" draggable="false" decoding="async">
         <img class="cat-img cat-img--adult ${kittenOn ? '' : 'is-on'}" id="catImgAdult" src="${ASSET_DIR}${t}-adult.png" alt="${escapeAttr(alt)}の成猫" draggable="false" decoding="async">
         ${collarHTML()}

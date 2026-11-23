@@ -113,10 +113,19 @@ def run(ctx):
         sceneLast: CATART.sceneKeyFor(c, story.length - 1),
         adopted: c.adoptIndex != null,
         shelterBorn: !!c.shelterBorn,
+        nekomata: !!c.nekomata,
+        maneki: !!c.maneki,
+        lifeBonus: c.lifeBonus || 0,
+        milestones: CATGACHA.milestonesPassed(c.ageYears).map(function(m){ return m.key; }),
+        statsEveryStep: story.every(function(st){ return st.stats && st.stats.energy >= 0 && st.stats.energy <= 100 && st.stats.food >= 0 && st.stats.food <= 100 && st.stats.luck >= 0 && st.stats.luck <= 100; }),
+        fateChoices: story.filter(function(st){ return st.choice && st.choice.tier === 'fate'; }).length,
+        effectCount: story.filter(function(st){ return st.choice; }).reduce(function(a, st){
+          return a + st.choice.options.filter(function(o){ return o.effect && Object.keys(o.effect).length; }).length;
+        }, 0),
         adoptIndex: c.adoptIndex == null ? null : c.adoptIndex,
         adoptOk: (c.adoptIndex == null) ? true : (
           story[c.adoptIndex] && story[c.adoptIndex].kind === 'adopt' &&
-          CATART.sceneKeyFor(c, c.adoptIndex) === 'home' &&
+          (CATART.sceneKeyFor(c, c.adoptIndex) === 'home' || CATART.sceneKeyFor(c, c.adoptIndex) === 'shop') &&
           (c.route === 'owned' || CATART.sceneKeyFor(c, c.adoptIndex - 1) !== 'home')
         ),
         adoptBeforeDeath: (c.adoptIndex == null) ? true : (c.adoptIndex < story.length - 1),
@@ -305,7 +314,8 @@ def main():
     choice_total = sum(len(c["choices"]) for c in cats)
     choice_cats = sum(1 for c in cats if c["choices"])
     print(f"  2択イベント: {choice_total}件 / {choice_cats}頭 ({pct(choice_cats, n)} の猫生に入る)")
-    check(all(3 <= c["storyLen"] <= 7 for c in cats), "歩数が3〜7の範囲外")
+    check(all(3 <= c["storyLen"] <= (12 if c["nekomata"] else (9 if c["maneki"] else 7)) for c in cats),
+          "歩数が範囲外（通常3〜7 / 招き猫〜9 / 猫又11）")
     check(all(lens[k] > 0 for k in (3, 4, 5, 6, 7)), "歩数のバリエーション不足(3〜7が揃っていない)")
     check(all(c["storyKinds"][0] == "birth" for c in cats), "最初が誕生ステップでない")
     check(all(c["storyKinds"][-1] == "death" for c in cats), "最後が最期ステップでない")
@@ -337,9 +347,126 @@ def main():
     check(len(adopted) > 0, "拾われるイベントが一件も発生しない")
     check(all(c["adoptOk"] for c in adopted), "拾われたステップ/背景の切り替えが不正")
     check(all(c["adoptBeforeDeath"] for c in adopted), "拾われるのが最期ステップ以降になっている")
-    check(all(c["sceneLast"] == "home" for c in adopted), "拾われた猫の最期が家の背景でない")
+    check(all(c["sceneLast"] in ("home", "shop") for c in adopted), "拾われた猫の最期が家/お店の背景でない")
     check(all(c["route"] in ("street", "community", "feral") or c["shelterBorn"] for c in adopted), "保護施設生まれ以外の飼い猫や野生種が拾われている")
     check(not any(c["adopted"] for c in cats if c["klass"] == "wild"), "野生ネコ科が拾われている")
+
+    # ---- 選択肢の分岐と手応え ----
+    print("\n--- 選択肢の分岐・手応え ---")
+    fate_cats = sum(1 for c in cats if c["fateChoices"])
+    print(f"  運命の2択がある猫生: {fate_cats} ({pct(fate_cats, n)})")
+    check(fate_cats > n * 0.5, "運命の2択（fate）がほとんど出ていない")
+    check(sum(c["effectCount"] for c in cats) > n, "2択にステータス効果が定義されていない")
+    check(all(c["statsEveryStep"] for c in cats), "ステップのステータスが0〜100の範囲外")
+    check(all(c["milestones"] for c in cats if c["age"] >= 10), "10歳以上の猫に節目（シニア）が付かない")
+    comedy = ("ノートPC", "高級ベッド", "大運動会", "自動ドア")
+    comedy_hits = sum(1 for c in cats for t in c["eventTexts"] if any(k in t for k in comedy))
+    print(f"  クスッと系イベントの出現: {comedy_hits} 件")
+    check(comedy_hits > 0, "コメディイベントが1件も出ていない")
+
+    scale = json.loads(ctx.eval("""
+      (function(){
+        var xs = [];
+        for (var a = 0; a <= 110; a += 0.5) xs.push(CATGACHA.ageScalePercent(a));
+        var mono = true;
+        for (var i = 1; i < xs.length; i++) if (xs[i] < xs[i - 1]) mono = false;
+        var nk = [];
+        for (var b = 0; b <= 110; b += 5) nk.push(CATGACHA.ageScalePercent(b, CATGACHA.NEKOMATA_TICKS));
+        var mono2 = true;
+        for (var j = 1; j < nk.length; j++) if (nk[j] < nk[j - 1]) mono2 = false;
+        return JSON.stringify({mono: mono, start: xs[0], end: xs[xs.length - 1],
+          mid: CATGACHA.ageScalePercent(10), nekoMono: mono2, nekoEnd: nk[nk.length - 1],
+          ticks: CATGACHA.AGE_TICKS.length, nekoTicks: CATGACHA.NEKOMATA_TICKS.length});
+      })()
+    """))
+    print(f"  年齢の目盛り: 0→{scale['end']} / 10歳={scale['mid']}% / 単調={scale['mono']} / 猫又スケール単調={scale['nekoMono']}")
+    check(scale["mono"] and scale["nekoMono"], "年齢の目盛りが単調増加でない")
+    check(scale["start"] == 0 and scale["end"] == 100, "年齢の目盛りの範囲が0〜100でない")
+    check(0 < scale["mid"] < 100, "10歳の目盛り位置が不正")
+
+    play = json.loads(ctx.eval("""
+      (function(){
+        var out = {errors: 0, last: null, rows: []};
+        for (var s = 1; s <= 1500; s++) {
+          var c = CATGACHA.rollCat(s * 99991);
+          try {
+            for (var i = 0; i < c.story.length; i++) {
+              var st = c.story[i];
+              if (st.kind === 'death') break;
+              if (st.choice && st.chosen == null) {
+                CATGACHA.applyChoice(c, i, i % st.choice.options.length);
+                if (i + 1 < c.story.length && c.story[i + 1].kind === 'death') break;
+              }
+            }
+            var peak = CATGACHA.peakStats(c);
+            out.rows.push({
+              age: c.ageYears, len: c.story.length, boss: !!c.bossCat, adopted: !!c.adopted,
+              neko: !!c.nekomata, maneki: !!c.maneki, bonus: c.lifeBonus || 0,
+              peak: peak, death: c.story[c.story.length - 1].kind,
+              lastLabel: c.story[c.story.length - 1].ageLabel
+            });
+          } catch (e) { out.errors++; out.last = String(e && e.stack || e); }
+        }
+        return JSON.stringify(out);
+      })()
+    """))
+    rows = play["rows"]
+    print(f"  2択を実際に選ぶ通しプレイ: {len(rows)}猫生 / 例外 {play['errors']}件")
+    if play["errors"]:
+        print("   last:", (play["last"] or "")[:400])
+    check(play["errors"] == 0, f"通しプレイで例外 {play['errors']} 件")
+    check(all(r["death"] == "death" for r in rows), "通しプレイで最期に到達しない猫がいる")
+    check(all(r["age"] > 0 for r in rows), "通しプレイで享年が0以下")
+    check(all(0 <= r["peak"]["energy"] <= 100 and 0 <= r["peak"]["food"] <= 100 and 0 <= r["peak"]["luck"] <= 100 for r in rows), "通しプレイのピークステータスが範囲外")
+    boss_n = sum(1 for r in rows if r["boss"])
+    bonus_n = sum(1 for r in rows if r["bonus"] > 0)
+    print(f"  ボス猫になった: {boss_n} / 延命が発生: {bonus_n} / 最大延命 +{max((r['bonus'] for r in rows), default=0)}年")
+    check(boss_n > 0, "通しプレイでボス猫ルートに入らない")
+    check(bonus_n > 0, "通しプレイで延命が一度も起きない")
+
+    # ---- 超レア隠しルート ----
+    print("\n--- 超レア隠しルート ---")
+    neko = [c for c in cats if c["nekomata"]]
+    maneki = [c for c in cats if c["maneki"]]
+    print(f"  猫又（100年）: {len(neko)} ({pct(len(neko), n)})")
+    print(f"  招き猫（お店）: {len(maneki)} ({pct(len(maneki), n)})")
+    check(len(neko) > 0, "猫又ルートに1頭も到達しない")
+    check(all(c["age"] >= 100 for c in neko), "猫又の享年が100歳未満")
+    check(all(c["storyLen"] >= 9 for c in neko), "猫又の猫生が短すぎる")
+    check(all(c["klass"] == "domestic" for c in neko), "野生種が猫又になっている")
+    check(all("senior" in c["storyStages"] for c in neko), "猫又にシニアステージがない")
+    check(len(maneki) > 0, "招き猫ルートに1頭も到達しない")
+    check(all(c["adopted"] for c in maneki), "招き猫が拾われルートでない")
+    check(all(c["sceneLast"] == "shop" for c in maneki), "招き猫の最期がお店の背景でない")
+    check(all(c["age"] >= 7 for c in maneki), "招き猫の享年がおかしい")
+
+    # ---- 実績・称号 ----
+    print("\n--- 実績・称号 ---")
+    ach = json.loads(ctx.eval("""
+      (function(){
+        var keys = CATGACHA.ACHIEVEMENTS.map(function(a){ return a.key; });
+        var dup = keys.filter(function(k, i){ return keys.indexOf(k) !== i; });
+        var bad = CATGACHA.ACHIEVEMENTS.filter(function(a){ return !a.icon || !a.name || !a.desc || !a.tone; }).map(function(a){ return a.key; });
+        var base = {total: 1, speciesCount: 1, countryCount: 1, adoptCount: 0, maxAge: 1,
+          peak: {energy: 40, food: 40, luck: 40}, cat: {ageYears: 1, route: 'owned', mutations: [], rarity: 'N'}};
+        var early = CATGACHA.evaluateAchievements(base);
+        var great = CATGACHA.evaluateAchievements({total: 100, speciesCount: 60, countryCount: 30, adoptCount: 6,
+          maxAge: 100, peak: {energy: 90, food: 90, luck: 90},
+          cat: {ageYears: 100, route: 'street', mutations: [{key: 'odd_eye'}, {key: 'male_calico'}], rarity: 'UR',
+                bossCat: true, nekomata: true, maneki: true, klass: 'domestic', speciesGroup: 'big', adopted: true, shelterBorn: true}});
+        var pinch = CATGACHA.evaluateAchievements({total: 2, speciesCount: 2, countryCount: 2, adoptCount: 0, maxAge: 4,
+          peak: {energy: 50, food: 50, luck: 50}, cat: {ageYears: 4, route: 'owned', mutations: [], rarity: 'N', pinchAvoided: true}});
+        return JSON.stringify({n: keys.length, dup: dup, bad: bad, early: early, great: great, pinch: pinch});
+      })()
+    """))
+    print(f"  実績 {ach['n']}個 / 重複 {ach['dup']} / 属性不足 {ach['bad']}")
+    print("  条件の同時達成数:", len(ach["great"]) )
+    check(ach["n"] >= 20, "実績が20個未満")
+    check(not ach["dup"], "実績キーが重複")
+    check(not ach["bad"], "実績にアイコン/名前/説明の欠け")
+    check("first" in ach["early"] and "legend20" not in ach["early"], "実績の初期判定が不正")
+    for key in ("nekomata", "maneki", "freeKing", "great", "legend20", "quarter", "all80", "ur", "dex50", "globe20", "maleCalico", "oddEye", "boss", "shelter", "pinch"):
+        check(key in ach["great"] or key in ach["pinch"], f"実績条件が満たされない: {key}")
 
     # ---- アセット/演出 ----
     print("\n--- アセット・演出 ---")

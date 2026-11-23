@@ -1,7 +1,10 @@
 """UIスモークテスト（DOMスタブ）
-ブラウザ無しで init() → ガチャ → 子猫誕生 → 猫生を歩む → 最期（フィナーレ）→ 図鑑
+ブラウザ無しで init() → ガチャ → 子猫誕生 → 猫生を歩む（手動/オート）→ 最期（フィナーレ）→ 図鑑
 の一連を実行し、要素IDの取り違えや実行時エラーを検出する。
+
+新機能（オート進行・選択肢による分岐・年齢の目盛り・実績・累計記録）も検証する。
 """
+import json
 import re
 import sys
 from pathlib import Path
@@ -14,6 +17,8 @@ JS_FILES = [
     "js/data.js", "js/engine.js", "js/catart.js",
 ]
 
+# setTimeout は「すぐ実行」ではなくキューに積む（オート進行を勝手に走らせないため）。
+# __runTimers(ms以下) でロール演出などの短いタイマーだけを進められる。
 DOM_STUB = r"""
 var __els = {};
 var __handlers = {};
@@ -33,13 +38,14 @@ El.prototype.addEventListener = function(ev, fn){
   __handlers[this.id + ':' + ev].push(fn);
 };
 function __tabs(){
-  return ['species','countries','mutations','records'].map(function(t){
+  return ['species','countries','mutations','achievements'].map(function(t){
     var e = new El('tab-' + t);
     e.dataset.tab = t;
     return e;
   });
 }
 var document = {
+  hidden: false,
   getElementById: function(id){
     if (!__els[id]) __els[id] = new El(id);
     return __els[id];
@@ -51,9 +57,32 @@ var document = {
   body: { style: {} },
   addEventListener: function(){}
 };
-var __timers = 0;
-function setTimeout(fn, ms){ __timers++; if (__timers > 8000) throw new Error('setTimeout loop'); fn(); return 0; }
-function clearTimeout(){}
+var __timers = [];
+var __timerId = 0;
+function setTimeout(fn, ms){
+  __timerId++;
+  __timers.push({id: __timerId, fn: fn, ms: ms || 0});
+  return __timerId;
+}
+function clearTimeout(id){
+  for (var i = 0; i < __timers.length; i++) {
+    if (__timers[i].id === id) { __timers.splice(i, 1); return; }
+  }
+}
+function __runTimers(maxMs){
+  var ran = 0;
+  while (ran < 4000) {
+    var idx = -1;
+    for (var i = 0; i < __timers.length; i++) {
+      if ((__timers[i].ms || 0) <= maxMs) { idx = i; break; }
+    }
+    if (idx < 0) break;
+    var t = __timers.splice(idx, 1)[0];
+    t.fn();
+    ran++;
+  }
+  return ran;
+}
 var __now = 1000000;
 Date.now = function(){ __now += 120; return __now; };
 var __opened = [];
@@ -67,6 +96,15 @@ var localStorage = {
   setItem: function(k, v){ this._v[k] = v; }
 };
 """
+
+failures = []
+
+
+def check(cond, msg):
+    if not cond:
+        failures.append(msg)
+        print("  [NG] " + msg)
+    return cond
 
 
 def main():
@@ -90,6 +128,10 @@ def main():
 
     # --- ガチャ → 子猫誕生 ---
     ctx.eval("__handlers['rollBtn:click'][0]();")
+    ctx.eval("__runTimers(100);")  # ロール演出（80ms刻み）だけ進める
+    if ctx.eval("CATAPP.state.rolling"):
+        print("[NG] ガチャ演出が終わらない")
+        return 1
     cat = ctx.eval("JSON.stringify({story: CATAPP.state.current.story.length, step: CATAPP.state.step, total: CATAPP.state.dex.total, stage: CATAPP.state.current.story[0].stage})")
     print("1回目のガチャ:", cat)
     if ctx.eval("CATAPP.state.step") != 0:
@@ -109,6 +151,59 @@ def main():
         print("[NG] 誕生カードが不正（享年が出ている/描画されていない）", len(card))
         return 1
     print("誕生カード文字数:", len(card), "/ 享年なし OK")
+
+    # --- オート進行（デフォルトON・速度切替・選択肢で一時停止） ---
+    if not ctx.eval("CATAPP.state.auto"):
+        print("[NG] オートがデフォルトONになっていない")
+        return 1
+    btn = ctx.eval("document.getElementById('autoBtnText').textContent")
+    note = ctx.eval("document.getElementById('autoNote').textContent")
+    print("オート:", ctx.eval("CATAPP.state.auto"), "/ ボタン:", btn, "/ note:", note)
+    if "秒" not in note:
+        print("[NG] オートの説明が出ていない:", note)
+        return 1
+    if ctx.eval("CATAPP.state.autoTimer") == 0:
+        print("[NG] オートのタイマーが予約されていない")
+        return 1
+    # 2x に切り替えると間隔が1.2秒になる
+    ctx.eval("__handlers['speed2:click'][0]()")
+    if ctx.eval("CATAPP.state.speed") != 2:
+        print("[NG] 2x に切り替わらない")
+        return 1
+    if "1.2" not in ctx.eval("document.getElementById('autoNote').textContent"):
+        print("[NG] 2x の説明が1.2秒になっていない")
+        return 1
+    ctx.eval("__handlers['speed1:click'][0]()")
+    if "2.5" not in ctx.eval("document.getElementById('autoNote').textContent"):
+        print("[NG] 1x の説明が2.5秒になっていない")
+        return 1
+    # autoTick で1歩進む
+    step0 = ctx.eval("CATAPP.state.step")
+    ctx.eval("CATAPP.autoTick()")
+    step1 = ctx.eval("CATAPP.state.step")
+    print("オートで1歩:", step0, "->", step1)
+    if step1 != step0 + 1:
+        print("[NG] オートで歩数が進まない")
+        return 1
+    # 一時停止すると進まない
+    ctx.eval("CATAPP.toggleAuto()")
+    if ctx.eval("CATAPP.state.auto"):
+        print("[NG] 一時停止できない")
+        return 1
+    ctx.eval("CATAPP.autoTick()")
+    if ctx.eval("CATAPP.state.step") != step1:
+        print("[NG] 一時停止中にオートが進んでしまった")
+        return 1
+    ctx.eval("CATAPP.toggleAuto()")
+    print("オートの一時停止/再開: OK")
+
+    # --- 年齢の目盛り ---
+    ruler = ctx.eval("JSON.stringify({ticks: document.getElementById('ageTicks').innerHTML.length, left: document.getElementById('ageMarker').style.left, age: document.getElementById('ageRuler').dataset.age})")
+    print("年齢の目盛り:", ruler)
+    rd = json.loads(ruler)
+    if rd["ticks"] < 100 or not rd["age"]:
+        print("[NG] 年齢の目盛りが描画されていない")
+        return 1
 
     # --- 猫ステージ（画像・首輪・ステータス） ---
     actor = ctx.eval("document.getElementById('catActor').innerHTML")
@@ -158,7 +253,7 @@ def main():
     # 拾われる体験：野良として生まれた猫を探し、首輪と家の背景を確認
     adopt = ctx.eval("""
       (function(){
-        for (var i = 1; i <= 600; i++) {
+        for (var i = 1; i <= 1500; i++) {
           var c = CATGACHA.rollCat(i * 7919);
           if (c.adoptIndex != null) {
             return JSON.stringify({
@@ -168,36 +263,43 @@ def main():
               after: CATART.sceneKeyFor(c, c.adoptIndex),
               last: CATART.sceneKeyFor(c, c.story.length - 1),
               collar: CATART.actorHTML(c, {stage: c.story[c.adoptIndex].stage}).indexOf('collarBadge') >= 0,
-              html: CATAPP.buildStepHTML(c, c.adoptIndex, {})
+              html: CATAPP.buildStepHTML(c, c.adoptIndex, {}),
+              maneki: !!c.maneki
             });
           }
         }
         return '{}';
       })()
     """)
-    import json as _json
-    ad = _json.loads(adopt)
+    ad = json.loads(adopt)
     if not ad:
         print("[NG] 拾われる猫が見つからない")
         return 1
-    if ad["kind"] != "adopt" or ad["after"] != "home" or ad["last"] != "home" or ad["before"] == "home":
+    if ad["kind"] != "adopt" or ad["after"] not in ("home", "shop") or ad["last"] not in ("home", "shop") or ad["before"] == "home":
         print("[NG] 拾われた時の背景切り替えが不正", ad["before"], "->", ad["after"])
         return 1
-    if "家族に迎えられた" not in ad["html"] or "拾われる" not in ad["html"]:
+    if "家族に迎えられた" not in ad["html"] and "お店に迎えられた" not in ad["html"]:
         print("[NG] 拾われたカードの表示が不正")
         return 1
     print(f"拾われる体験: seed {ad['i']} / {ad['route']} / {ad['before']} → {ad['after']} / 首輪 OK")
-    if ctx.eval("document.getElementById('walkBtn').hidden"):
+    cur_step = ctx.eval("CATAPP.state.current.story[CATAPP.state.step]")
+    if ctx.eval("!!CATAPP.state.current.story[CATAPP.state.step].choice && CATAPP.state.current.story[CATAPP.state.step].chosen == null"):
+        # 2択の途中なら「歩む」は隠れているのが正しい（選択肢で休む仕様）
+        if not ctx.eval("document.getElementById('walkBtn').hidden"):
+            print("[NG] 2択なのに歩むボタンが出ている")
+            return 1
+        print("2択で自動停止: OK")
+    elif ctx.eval("document.getElementById('walkBtn').hidden"):
         print("[NG] 歩むボタンが出ていない")
         return 1
 
     # --- 猫生を歩む（2択は先に選ぶ） ---
     ctx.eval("""
       var guard = 0;
-      while (guard++ < 30) {
+      while (guard++ < 40) {
         var st = CATAPP.state.current.story[CATAPP.state.step];
         if (st.kind === 'death') break;
-        if (st.choice && CATAPP.state.picked[CATAPP.state.step] == null) {
+        if (st.choice && st.chosen == null) {
           if (document.getElementById('walkBtn').hidden !== true) { throw new Error('2択なのに歩むボタンが出ている'); }
           CATAPP.choose(0);
         }
@@ -224,16 +326,33 @@ def main():
     if "undefined" in fin or "NaN" in fin:
         print("[NG] フィナーレに undefined/NaN")
         return 1
-    # 地名が単独の行になっている（「北京地球の猫」のような詰まり防止）
     if 'class="prob-place"' not in fin or 'class="prob-base"' not in fin:
         print("[NG] 確率欄のレイアウト要素がない")
         return 1
-    print("フィナーレ文字数:", len(fin), "/ 享年・確率・図鑑通知 OK")
+    if "ach-burst" not in fin or "🏆 実績・称号" not in fin:
+        print("[NG] フィナーレに実績欄がない")
+        return 1
+    print("フィナーレ文字数:", len(fin), "/ 享年・確率・実績・図鑑通知 OK")
+
+    ach = json.loads(ctx.eval("JSON.stringify(CATAPP.state.dex.ach)"))
+    print("解除した実績:", list(ach.keys()))
+    if "first" not in ach:
+        print("[NG] はじめての猫生が解除されていない")
+        return 1
+    if "はじめての猫生" not in fin:
+        print("[NG] 新規実績がフィナーレに表示されていない")
+        return 1
     if not ctx.eval("document.getElementById('walkBtn').hidden"):
         print("[NG] 最期でも歩むボタンが出ている")
         return 1
     if not ctx.eval("document.getElementById('skipBtn').hidden"):
         print("[NG] 最期でもスキップボタンが出ている")
+        return 1
+    if ctx.eval("CATAPP.state.autoTimer") not in (0, None):
+        print("[NG] 最期なのにオートのタイマーが残っている")
+        return 1
+    if "自動で進む" not in ctx.eval("document.getElementById('autoNote').textContent") and "終わった" not in ctx.eval("document.getElementById('autoNote').textContent"):
+        print("[NG] 最期のオート表示が不正")
         return 1
     mem = ctx.eval("document.getElementById('memoryList').innerHTML")
     print("これまでの歩み文字数:", len(mem))
@@ -255,20 +374,29 @@ def main():
     print("図鑑(種別)文字数:", len(dex_html))
     ctx.eval("CATAPP.state.tab='countries'; __handlers['openDex:click'][0]()")
     print("図鑑(国)文字数:", len(ctx.eval("document.getElementById('dexBody').innerHTML")))
-    ctx.eval("CATAPP.state.tab='records'; __handlers['openDex:click'][0]()")
-    print("図鑑(記録)文字数:", len(ctx.eval("document.getElementById('dexBody').innerHTML")))
+    ctx.eval("CATAPP.state.tab='achievements'; __handlers['openDex:click'][0]()")
+    ach_html = ctx.eval("document.getElementById('dexBody').innerHTML")
+    print("図鑑(実績・きろく)文字数:", len(ach_html))
+    for need in ("🏆 実績・称号", "📊 これまでのきろく", "累計転生", "最長寿記録", "図鑑コンプ率", "はじめての猫生"):
+        if need not in ach_html:
+            print("[NG] 実績タブに不足:", need)
+            return 1
     ctx.eval("__handlers['closeDex:click'][0]()")
     print("モーダル:", ctx.eval("document.getElementById('dexModal').hidden"))
 
-    # localStorage 保存
+    # localStorage 保存（実績も入っている）
     saved = ctx.eval("localStorage.getItem('catgacha.dex.v1')")
     print("保存データ:", "あり" if saved else "なし", "(" + str(len(saved or "")) + " bytes)")
     if not saved:
         print("[NG] 図鑑が保存されていない")
         return 1
+    if '"ach"' not in saved:
+        print("[NG] 実績が保存されていない")
+        return 1
 
     # --- もう一度 → スキップで最期まで ---
     ctx.eval("__handlers['againBtn:click'][0]()")
+    ctx.eval("__runTimers(100);")
     if ctx.eval("CATAPP.state.step") != 0:
         print("[NG] もう一度で新しい子猫が生まれていない")
         return 1
@@ -289,6 +417,7 @@ def main():
     ctx.eval("""
       for (var i = 0; i < 30; i++) {
         __handlers['rollBtn:click'][0]();
+        __runTimers(100);
         CATAPP.skipAll();
       }
     """)
@@ -297,8 +426,158 @@ def main():
         print("[NG] 連続実行で図鑑登録数が合わない")
         return 1
 
-    print("\nUIスモーク: PASS")
-    return 0
+    # --- 2択の分岐（延命・拾われる・ピンチ）が選んだ瞬間に効く ---
+    branch = ctx.eval("""
+      (function(){
+        function findFx(pred){
+          for (var s = 1; s < 4000; s++) {
+            var c = CATGACHA.rollCat(s * 104729);
+            for (var k = 0; k < c.story.length; k++) {
+              var st = c.story[k];
+              if (!st.choice) continue;
+              for (var oi = 0; oi < st.choice.options.length; oi++) {
+                var eff = st.choice.options[oi].effect || {};
+                if (pred(eff)) return {c: c, k: k, oi: oi, eff: eff};
+              }
+            }
+          }
+          return null;
+        }
+        var out = {};
+        var hit = findFx(function(e){ return !!e.life; });
+        if (hit) {
+          var before = {age: hit.c.ageYears, len: hit.c.story.length};
+          var f = CATGACHA.applyChoice(hit.c, hit.k, hit.oi);
+          out.life = {before: before, after: {age: hit.c.ageYears, len: hit.c.story.length}, fx: f};
+        }
+        hit = findFx(function(e){ return !!e.adopt; });
+        if (hit) {
+          var before2 = hit.c.story.length;
+          var f2 = CATGACHA.applyChoice(hit.c, hit.k, hit.oi);
+          out.adopt = {before: before2, after: hit.c.story.length, idx: hit.c.adoptIndex, kind: hit.c.story[hit.c.adoptIndex].kind, fx: f2, scene: CATART.sceneKeyFor(hit.c, hit.c.adoptIndex)};
+        }
+        hit = findFx(function(e){ return !!e.risk; });
+        if (hit) {
+          var f3 = CATGACHA.applyChoice(hit.c, hit.k, hit.oi);
+          out.risk = {fx: f3, last: hit.c.story[hit.c.story.length - 1].kind, len: hit.c.story.length};
+        }
+        hit = findFx(function(e){ return !!e.boss; });
+        if (hit) {
+          var f4 = CATGACHA.applyChoice(hit.c, hit.k, hit.oi);
+          out.boss = {fx: f4, boss: !!hit.c.bossCat, age: hit.c.ageYears};
+        }
+        return JSON.stringify(out);
+      })()
+    """)
+    br = json.loads(branch)
+    print("分岐テスト:", json.dumps(br, ensure_ascii=False)[:400])
+    if not br.get("life"):
+        print("[NG] 延命の2択が見つからない")
+        return 1
+    if not (br["life"]["after"]["age"] > br["life"]["before"]["age"] and br["life"]["fx"]["lifeAdded"] > 0):
+        print("[NG] 延命が寿命に反映されていない")
+        return 1
+    if not br.get("adopt") or br["adopt"]["kind"] != "adopt" or br["adopt"]["scene"] not in ("home", "shop"):
+        print("[NG] 2択から拾われる分岐が動かない")
+        return 1
+    if not br.get("risk") or br["risk"]["last"] != "death":
+        print("[NG] ピンチの分岐で最期が入らない")
+        return 1
+    if not br.get("boss") or not br["boss"]["boss"]:
+        print("[NG] ボス猫ルートが動かない")
+        return 1
+    print("2択の分岐（延命/拾われる/ピンチ/ボス）: OK")
+
+    # --- 超レア進化ルート（猫又・招き猫）がUIでも壊れない ---
+    rare = ctx.eval("""
+      (function(){
+        var neko = null, maneki = null;
+        for (var s = 1; s < 20000 && (!neko || !maneki); s++) {
+          var c = CATGACHA.rollCat(s * 7919);
+          if (!neko && c.nekomata) neko = c;
+          if (!maneki && c.maneki) maneki = c;
+        }
+        var out = {};
+        if (neko) {
+          var idx = neko.story.length - 2;
+          out.neko = {
+            age: neko.ageYears, len: neko.story.length,
+            html: CATAPP.buildStepHTML(neko, idx, {}),
+            finale: CATAPP.buildFinaleHTML(neko, [CATGACHA.achievementDef('nekomata')], {ach:{nekomata:1}}),
+            scene: CATART.sceneKeyFor(neko, idx),
+            form: CATAPP.formAt ? CATAPP.formAt(neko, idx) : 'n/a',
+            particles: CATART.particlesHTML(neko, idx, false)
+          };
+        }
+        if (maneki) {
+          var i2 = maneki.story.length - 1;
+          out.maneki = {
+            age: maneki.ageYears, len: maneki.story.length, adoptIndex: maneki.adoptIndex,
+            html: CATAPP.buildStepHTML(maneki, maneki.adoptIndex, {}),
+            finale: CATAPP.buildFinaleHTML(maneki, [CATGACHA.achievementDef('maneki')], {ach:{maneki:1}}),
+            scene: CATART.sceneKeyFor(maneki, maneki.adoptIndex),
+            form: CATAPP.formAt ? CATAPP.formAt(maneki, maneki.adoptIndex) : 'n/a'
+          };
+        }
+        return JSON.stringify(out);
+      })()
+    """)
+    rare = json.loads(rare)
+    if not rare.get("neko"):
+        print("[NG] 猫又ルートの猫が見つからない（UI検証不能）")
+        return 1
+    if "猫又" not in rare["neko"]["html"] or "page--evolve" not in rare["neko"]["html"]:
+        print("[NG] 猫又のページ表示が不正")
+        return 1
+    if "猫又" not in rare["neko"]["finale"] or "undefined" in rare["neko"]["finale"]:
+        print("[NG] 猫又のフィナーレが不正")
+        return 1
+    if rare["neko"]["age"] < 100 or rare["neko"]["len"] < 9:
+        print("[NG] 猫又の寿命/歩数が不正", rare["neko"]["age"], rare["neko"]["len"])
+        return 1
+    if "🔮" not in rare["neko"]["particles"]:
+        print("[NG] 猫又のパーティクルがない")
+        return 1
+    print("猫又ルート: age", rare["neko"]["age"], "/ form", rare["neko"]["form"], "/ scene", rare["neko"]["scene"])
+    if rare.get("maneki"):
+        if "招き猫" not in rare["maneki"]["finale"] or "undefined" in rare["maneki"]["finale"]:
+            print("[NG] 招き猫のフィナーレが不正")
+            return 1
+        if rare["maneki"]["scene"] != "shop":
+            print("[NG] 招き猫の背景がお店になっていない:", rare["maneki"]["scene"])
+            return 1
+        print("招き猫ルート: age", rare["maneki"]["age"], "/ form", rare["maneki"]["form"], "/ scene", rare["maneki"]["scene"])
+    else:
+        print("[note] このシード範囲では招き猫が出なかった（simulate.py で件数確認）")
+
+    # --- 実績の評価関数が壊れていないか ---
+    achcheck = json.loads(ctx.eval("""
+      (function(){
+        var base = {total: 1, speciesCount: 1, countryCount: 1, adoptCount: 0, maxAge: 1,
+          peak: {energy: 41, food: 42, luck: 43}, cat: {ageYears: 1, route: 'owned', mutations: [], rarity: 'N'}};
+        var a = CATGACHA.evaluateAchievements(base);
+        var b = CATGACHA.evaluateAchievements(Object.assign({}, base, {
+          total: 100, speciesCount: 60, countryCount: 30, adoptCount: 6,
+          peak: {energy: 90, food: 90, luck: 90},
+          cat: {ageYears: 100, route: 'street', mutations: [{key:'odd_eye'}], rarity: 'UR', bossCat: true, nekomata: true, maneki: true}
+        }));
+        return JSON.stringify({defs: CATGACHA.ACHIEVEMENTS.length, a: a, b: b});
+      })()
+    """))
+    print("実績定義:", achcheck["defs"], "個 / 初期:", achcheck["a"])
+    if achcheck["defs"] < 20:
+        print("[NG] 実績が20個未満")
+        return 1
+    if "first" not in achcheck["a"]:
+        print("[NG] 実績評価が動かない")
+        return 1
+    for key in ("nekomata", "maneki", "freeKing", "legend20", "all80", "ur"):
+        if key not in achcheck["b"]:
+            print("[NG] 実績条件が不足:", key)
+            return 1
+
+    print("\n結果:", "PASS" if not failures else f"FAIL ({len(failures)}件)")
+    return 0 if not failures else 1
 
 
 if __name__ == "__main__":

@@ -77,18 +77,37 @@
         <button class="skip-btn" id="skipBtn">⏩ 一気に最期まで見る</button>
       </div>
 
+      <div class="auto-bar" id="autoBar">
+        <button class="auto-btn is-on" id="autoBtn" aria-pressed="true">
+          <span class="auto-icon" id="autoBtnIcon">⏸</span><span id="autoBtnText">一時停止</span>
+        </button>
+        <div class="speed-group" role="group" aria-label="オートの速さ">
+          <button class="speed-btn is-active" id="speed1" data-speed="1">1x</button>
+          <button class="speed-btn" id="speed2" data-speed="2">2x</button>
+        </div>
+        <span class="auto-note" id="autoNote">2.5秒ごとに自動で進む</span>
+      </div>
+
       <div class="stage" id="catStage">
         <div class="stage-scene scene--home" id="stageScene" aria-hidden="true"></div>
         <div class="stage-glow" aria-hidden="true"></div>
+        <div class="stage-mood" id="stageMood" aria-hidden="true"></div>
         <div class="particles" id="stageParticles" aria-hidden="true"></div>
         <div class="stage-top">
           <span class="stage-age" id="stageAge">生まれた日</span>
           <span class="stage-stage" id="stageStage">子猫</span>
+          <span class="stage-form" id="stageForm" hidden></span>
           <span class="stage-place" id="stagePlace">あたたかいおうち</span>
         </div>
         <div class="cat-actor" id="catActor" role="button" tabindex="0" aria-label="猫をタップして反応を見る"></div>
         <div class="stage-toast" id="stageToast" aria-live="polite"></div>
         <div class="stats" id="stats"></div>
+      </div>
+
+      <div class="age-ruler" id="ageRuler" aria-hidden="true">
+        <div class="age-track"><i class="age-fill" id="ageFill"></i></div>
+        <div class="age-ticks" id="ageTicks"></div>
+        <span class="age-marker" id="ageMarker">🐾</span>
       </div>
       <p class="tap-hint" id="tapHint">🐾 猫をタップすると反応するよ</p>
 
@@ -133,10 +152,10 @@
       </div>
       <div class="dex-summary" id="dexSummary"></div>
       <div class="dex-tabs" role="tablist">
-        <button class="tab is-active" data-tab="species" role="tab">種別</button>
-        <button class="tab" data-tab="countries" role="tab">国・地域</button>
-        <button class="tab" data-tab="mutations" role="tab">変異</button>
-        <button class="tab" data-tab="records" role="tab">記録</button>
+        <button class="tab is-active" data-tab="species" role="tab">🐾 種別</button>
+        <button class="tab" data-tab="countries" role="tab">🌍 国・地域</button>
+        <button class="tab" data-tab="mutations" role="tab">✨ 変異</button>
+        <button class="tab" data-tab="achievements" role="tab">🏆 実績・きろく</button>
       </div>
       <div class="dex-body" id="dexBody"></div>
     </div>
