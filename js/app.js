@@ -188,7 +188,7 @@
 
   function badgeHTML(cat, idx) {
     const out = [];
-    const ms = E.milestoneAt(cat.story, idx);
+    const ms = cat.story[idx] && cat.story[idx].kind === 'death' ? null : E.milestoneAt(cat.story, idx);
     if (ms) out.push(`<span class="milestone-badge tone-${ms.tone}">${ms.icon} ${ms.label}</span>`);
     const f = formAt(cat, idx);
     if (f === 'nekomata') out.push('<span class="form-badge is-nekomata">🔮 猫又</span>');
@@ -583,6 +583,7 @@
     function updateAutoUI() {
       const on = state.auto;
       if (el.autoBtn) el.autoBtn.className = 'auto-btn' + (on ? ' is-on' : '');
+      if (el.autoBtn) el.autoBtn.disabled = !state.current || autoBlocked() === 'death';
       if (el.autoBtnIcon) el.autoBtnIcon.textContent = on ? '⏸' : '▶';
       if (el.autoBtnText) el.autoBtnText.textContent = on ? '一時停止' : 'オート';
       if (el.speed1) el.speed1.className = 'speed-btn' + (state.speed === 1 ? ' is-active' : '');
