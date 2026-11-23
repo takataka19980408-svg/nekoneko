@@ -718,6 +718,7 @@
     ${mane}
     <polygon points="${pts(g.ears.l)}" fill="${earFill}"/>
     <polygon points="${pts(g.ears.r)}" fill="${earFill}"/>
+    <path d="M${g.ears.l[0][0]} ${g.ears.l[0][1]} L${g.ears.l[1][0]} ${g.ears.l[1][1]} L${g.ears.r[1][0]} ${g.ears.r[1][1]} L${g.ears.r[0][0]} ${g.ears.r[0][1]} Z" fill="${fill}"/>
     <g clip-path="url(#${u}-head)">
       <rect width="320" height="360" fill="${fill}"/>
       ${pattern}
