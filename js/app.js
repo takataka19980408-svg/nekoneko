@@ -615,7 +615,7 @@
 
   function albumStepHTML(log) {
     const season = log.season ? `<span class="album-season">${E.seasonEmoji(log.season)}${E.seasonLabel(log.season)}</span>` : '';
-    const badge = log.badge ? `<span class="album-step-badge">${log.badge}</span>` : '';
+    const badge = (log.badge && log.kind !== 'birth' && log.kind !== 'death') ? `<span class="album-step-badge">${log.badge}</span>` : '';
     const title = log.kind === 'death' ? '🌈 最期'
       : (log.kind === 'birth' || log.kind === 'adopt' || log.kind === 'evolve') ? ''
       : (log.title ? '【' + log.title + '】' : '');
