@@ -508,9 +508,15 @@
 
   function storyPool(cat) {
     const out = [];
-    (cat.region && cat.region.events ? cat.region.events : []).forEach(t => out.push({ w: 1.3, min: 1.4, max: Infinity, text: t }));
-    GENERIC_EVENTS(cat).forEach(e => out.push(e));
-    if (cat.klass === 'wild') WILD_EVENTS(cat).forEach(e => out.push(e));
+    const seen = {};
+    const add = (e) => {
+      if (!e || seen[e.text]) return;
+      seen[e.text] = 1;
+      out.push({ w: e.w || 1, min: e.min, max: e.max, text: e.text });
+    };
+    (cat.region && cat.region.events ? cat.region.events : []).forEach(t => add({ w: 1.3, min: 1.4, max: Infinity, text: t }));
+    GENERIC_EVENTS(cat).forEach(add);
+    if (cat.klass === 'wild') WILD_EVENTS(cat).forEach(add);
     return out;
   }
 

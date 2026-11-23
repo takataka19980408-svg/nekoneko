@@ -86,6 +86,7 @@ def run(ctx):
         storyStages: story.map(function(s){ return s.stage; }),
         storyTitles: story.every(function(s){ return !!s.title; }),
         storyTexts: story.every(function(s){ return !!s.text; }),
+        eventTexts: story.filter(function(s){ return s.kind === 'event'; }).map(function(s){ return s.text; }),
         stageOk: story.every(function(s){
           var a = s.kind === 'birth' ? 0 : s.age;
           return s.stage === CATGACHA.stageForAge(a);
@@ -257,6 +258,9 @@ def main():
     check(all(c["storyTitles"] and c["storyTexts"] for c in cats), "タイトル/本文が空のステップ")
     check(all(c["storyStages"][0] == "kitten" for c in cats), "誕生が子猫ステージでない")
     check(all(ch["n"] == 2 and ch["ok"] and ch["q"] for c in cats for ch in c["choices"]), "2択イベントの形が不正")
+    dup_story = [c for c in cats if len(set(c["eventTexts"])) != len(c["eventTexts"])]
+    print(f"  同じ文章の重複した猫生: {len(dup_story)}")
+    check(not dup_story, f"同じイベント文が1猫生に重複 ({len(dup_story)}頭)")
     check(choice_total > 0 and choice_cats > n * 0.4, "2択イベントがほとんど出ていない")
     senior_cats = sum(1 for c in cats if "senior" in c["storyStages"])
     print(f"  シニア猫まで育つ猫生: {senior_cats} ({pct(senior_cats, n)})")
