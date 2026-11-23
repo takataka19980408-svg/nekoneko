@@ -279,6 +279,8 @@
 
   /* ---------------- 形 ---------------- */
   const BODY_PATH = 'M160 182 C128 182 110 208 106 246 C101 290 126 328 160 328 C194 328 219 290 214 246 C210 208 192 182 160 182 Z';
+  /* 子猫用：肩が広くて丸い、ちびっこい体 */
+  const KITTEN_BODY = 'M160 166 C124 166 102 198 98 240 C94 290 122 330 160 330 C198 330 226 290 222 240 C218 198 196 166 160 166 Z';
 
   /* 年齢ステージ：子猫は頭が大きく体がちいさい、シニアは少し小ぶりで落ち着いた姿 */
   const STAGE_SCALE = {
@@ -673,11 +675,13 @@
         <circle cx="96" cy="34" r="2.4"/><circle cx="286" cy="170" r="2"/>
       </g>`;
 
+    const bodyPath = stage === 'kitten' ? KITTEN_BODY : BODY_PATH;
+
     const svg = `
 <svg viewBox="0 0 320 360" xmlns="http://www.w3.org/2000/svg" class="cat-svg" role="img" aria-label="${escapeAttr(cat.speciesName || '猫')}のイラスト">
   <defs>
     <clipPath id="${u}-frame"><rect width="320" height="360" rx="26"/></clipPath>
-    <clipPath id="${u}-body"><path d="${BODY_PATH}"/></clipPath>
+    <clipPath id="${u}-body"><path d="${bodyPath}"/></clipPath>
     <clipPath id="${u}-head">
       <circle cx="${H.x}" cy="${H.y}" r="${H.r}"/>
       <polygon points="${pts(g.ears.l)}"/>
@@ -710,7 +714,7 @@
       <ellipse cx="160" cy="200" rx="58" ry="34" fill="#FFFFFF" opacity=".1"/>
       <ellipse cx="160" cy="300" rx="70" ry="46" fill="#000" opacity=".07"/>
     </g>
-    <path d="${BODY_PATH}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
+    <path d="${bodyPath}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
     ${legs}
     ${ruff}
   </g>
