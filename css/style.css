@@ -1789,19 +1789,20 @@ body::before {
 .cat-img.is-on { opacity: 1; }
 .cat-art.is-senior .cat-img.is-on { filter: drop-shadow(0 14px 10px rgba(90, 60, 40, .16)) saturate(.72) brightness(1.06); }
 
-/* 拾われた証の鈴付き首輪（首もとに自然にフィットするサイズへ） */
+/* 拾われた証の鈴付き首輪 — 26枚それぞれの首元座標（--collar-x/y/w/r）に追従する */
 .collar {
   position: absolute;
-  left: 50%;
-  top: 54.2%;
-  width: 30%;
-  transform: translate(-50%, -50%) scale(.6);
+  left: var(--collar-x, 50%);
+  top: var(--collar-y, 54.2%);
+  width: var(--collar-w, 30%);
+  transform: translate(-50%, -50%) rotate(var(--collar-r, 0deg)) scale(.6);
   opacity: 0;
   pointer-events: none;
-  transition: opacity .45s ease, transform .6s cubic-bezier(.2, .9, .3, 1.4);
+  transition: opacity .45s ease, transform .6s cubic-bezier(.2, .9, .3, 1.4),
+              left .5s ease, top .5s ease, width .5s ease;
   filter: drop-shadow(0 2px 3px rgba(90, 50, 30, .22));
 }
-.collar.is-on { opacity: 1; transform: translate(-50%, -50%) scale(1); animation: collarSpark .9s ease; }
+.collar.is-on { opacity: 1; transform: translate(-50%, -50%) rotate(var(--collar-r, 0deg)) scale(1); animation: collarSpark .9s ease; }
 .collar svg { display: block; width: 100%; height: auto; }
 .collar-spark {
   position: absolute;

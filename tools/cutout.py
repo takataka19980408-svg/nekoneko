@@ -4,9 +4,12 @@
 使い方:
     python3 tools/cutout.py <入力.png> <出力.png> [--size 512]
 
-- 四辺から連結フラッドフィル（局所的なグラデーション追従）で背景を抜く
-- 残った背景のフリンジは色デコンタミネーションでクリーム色を差し引く
-- アルファを1pxフェザリングしてアンチエイリアス
+- 四辺から連結フラッドフィルで背景を抜く（背景色に近い画素のみ。白い毛を食べない）
+- **外周から届かない透明領域（体の内側の穴）は必ず不透明に埋め戻す**
+  （＝「透明な猫」バグの再発防止。色は周囲の不透明画素から最も近い色で補間）
+- 輪郭は1pxだけフェザリングしてアンチエイリアス
+- 猫の体の内側は alpha=255（完全不透明）に正規化
+- 色デコンタミネーションで縁のクリーム色を差し引く
 - 被写体のバウンディングボックスで切り出し、中央に配置
 """
 import sys
@@ -19,119 +22,172 @@ from PIL import Image, ImageFilter
 def border_color(arr):
     h, w = arr.shape[:2]
     samples = []
-    k = 4
+    k = 5
+    step = max(1, w // 40)
     for y in range(k):
-        for x in range(0, w, max(1, w // 30)):
+        for x in range(0, w, step):
             samples.append(arr[y, x])
             samples.append(arr[h - 1 - y, x])
     for x in range(k):
-        for y in range(0, h, max(1, h // 30)):
+        for y in range(0, h, step):
             samples.append(arr[y, x])
             samples.append(arr[y, w - 1 - x])
     return np.median(np.array(samples), axis=0)
 
 
-def cutout(path, size=512):
-    im = Image.open(path).convert("RGB")
-    # 処理を軽くするため長辺1024まで縮小
-    if max(im.size) > 1024:
-        im = im.resize((1024, round(im.size[1] * 1024 / im.size[0])), Image.LANCZOS)
-    arr = np.asarray(im).astype(np.int16)
+def flood_bg(arr, bg, tol=18):
+    """外周から、背景色に近い画素だけを連結フラッドフィルで取り除く。"""
     h, w = arr.shape[:2]
-    bg = border_color(arr)
-
-    # --- 四辺から連結フラッドフィル ---
+    dist = np.abs(arr - bg).max(axis=2)
+    close = dist < tol
     removed = np.zeros((h, w), dtype=bool)
     q = deque()
     for x in range(w):
-        q.append((0, x)); q.append((h - 1, x))
+        for y in (0, h - 1):
+            if close[y, x] and not removed[y, x]:
+                removed[y, x] = True
+                q.append((y, x))
     for y in range(h):
-        q.append((y, 0)); q.append((y, w - 1))
-
-    def close_to_bg(px):
-        return np.abs(px - bg).max() < 16
-
-    def close_to_neighbour(px, nb):
-        # 明るいグラデーション（影の裾）なら局所的に追従してよい
-        return np.abs(px - nb).max() < 7 and px.mean() > 185
-
+        for x in (0, w - 1):
+            if close[y, x] and not removed[y, x]:
+                removed[y, x] = True
+                q.append((y, x))
     while q:
         y, x = q.popleft()
-        if removed[y, x]:
-            continue
-        px = arr[y, x]
-        if not close_to_bg(px):
-            continue
-        removed[y, x] = True
         for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             ny, nx = y + dy, x + dx
-            if 0 <= ny < h and 0 <= nx < w and not removed[ny, nx]:
-                nb = arr[y, x]
-                if close_to_bg(arr[ny, nx]) or close_to_neighbour(arr[ny, nx], nb):
-                    q.append((ny, nx))
+            if 0 <= ny < h and 0 <= nx < w and close[ny, nx] and not removed[ny, nx]:
+                removed[ny, nx] = True
+                q.append((ny, nx))
+    return removed
 
-    # --- 2パス目: 背景に接している「うすい影」も食べる ---
-    # 影はクリームより少し濃いだけなので、明るさ・低彩度・背景色からの距離で判定し、
-    # 背景とつながっているものだけを消す（白い胸毛や肉球は輪郭で囲われているので残る）
-    bgd = np.abs(arr - bg).max(axis=2)
-    lum = arr.mean(axis=2)
-    sat = (arr.max(axis=2) - arr.min(axis=2)) / np.maximum(arr.max(axis=2), 1)
-    shadowish = (bgd < 78) & (lum > 196) & (sat < 0.30)
 
-    q2 = deque()
+def border_connected(mask):
+    """mask==True のうち外周に連結している画素。"""
+    h, w = mask.shape
+    seen = np.zeros((h, w), dtype=bool)
+    q = deque()
+    for x in range(w):
+        for y in (0, h - 1):
+            if mask[y, x] and not seen[y, x]:
+                seen[y, x] = True
+                q.append((y, x))
     for y in range(h):
-        for x in range(w):
-            if removed[y, x]:
-                for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < h and 0 <= nx < w and not removed[ny, nx] and shadowish[ny, nx]:
-                        q2.append((ny, nx))
-    while q2:
-        y, x = q2.popleft()
-        if removed[y, x]:
-            continue
-        removed[y, x] = True
+        for x in (0, w - 1):
+            if mask[y, x] and not seen[y, x]:
+                seen[y, x] = True
+                q.append((y, x))
+    while q:
+        y, x = q.popleft()
         for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             ny, nx = y + dy, x + dx
-            if 0 <= ny < h and 0 <= nx < w and not removed[ny, nx] and shadowish[ny, nx]:
-                q2.append((ny, nx))
+            if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not seen[ny, nx]:
+                seen[ny, nx] = True
+                q.append((ny, nx))
+    return seen
 
-    # 背景に接しているが背景色でない画素（境界のアンチエイリアス）
+
+def fill_holes(mask, rgb, max_ratio=1.0):
+    """mask==True(不透明) の内部にある透明の穴を、周囲の色で埋めて不透明にする。
+
+    戻り値: (新しい mask, 新しい rgb, 埋めた画素数)
+    """
+    h, w = mask.shape
+    holes = ~mask & ~border_connected(~mask)
+    if not holes.any():
+        return mask, rgb, 0
+    filled = mask.copy()
+    out = rgb.copy()
+    # 多始点BFS: 不透明画素から穴へ色を伝播させる
+    q = deque()
+    src = np.full((h, w, 3), -1, dtype=np.int16)
+    ys, xs = np.where(mask)
+    for y, x in zip(ys, xs):
+        src[y, x] = rgb[y, x]
+        q.append((y, x))
+    seen = mask.copy()
+    while q:
+        y, x = q.popleft()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and not seen[ny, nx] and holes[ny, nx]:
+                seen[ny, nx] = True
+                src[ny, nx] = src[y, x]
+                q.append((ny, nx))
+    filled = mask | holes
+    out[holes] = src[holes]
+    return filled, out, int(holes.sum())
+
+
+def shrink_rgba(img, colors=256):
+    """RGBだけ256色に量子化して軽くする（alphaの滑らかなエッジはそのまま保つ）。
+
+    透明部分のRGBは平均色で埋めてから量子化する（パレットの無駄を防ぐ）。
+    """
+    a = img.getchannel("A")
+    arr = np.asarray(img.convert("RGB")).astype(np.float32)
+    visible = np.asarray(a) > 8
+    if visible.any():
+        arr[~visible] = arr[visible].mean(axis=0)
+    filled = Image.fromarray(arr.astype(np.uint8), "RGB")
+    q = filled.quantize(colors=colors, method=Image.MEDIANCUT,
+                        dither=Image.FLOYDSTEINBERG).convert("RGB")
+    return Image.merge("RGBA", (*q.split(), a))
+
+
+def cutout(path, size=512, tol=18, verbose=True):
+    im = Image.open(path).convert("RGB")
+    if max(im.size) > 1400:
+        im = im.resize((1400, round(im.size[1] * 1400 / im.size[0])), Image.LANCZOS)
+    arr = np.asarray(im).astype(np.int16)
+    bg = border_color(arr)
+
+    removed = flood_bg(arr, bg, tol=tol)
     mask = ~removed
+    rgb = arr.astype(np.int16)
 
-    # 小さな孤立した背景色の穴を埋める
-    alpha = (mask * 255).astype(np.uint8)
-    a_im = Image.fromarray(alpha, "L")
+    # --- 体の内側の透明穴を埋め戻す（透明な猫の再発防止） ---
+    holes_before = int((~mask & ~border_connected(~mask)).sum())
+    mask, rgb, _ = fill_holes(mask, rgb)
 
-    # 境界のギザギザを少しだけ丸める
-    a_im = a_im.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(1.6))
+    # --- 輪郭のフェザリング（1pxだけ） ---
+    a = (mask * 255).astype(np.float32)
+    a_im = Image.fromarray(a.astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(0.9))
     a = np.asarray(a_im).astype(np.float32) / 255.0
+    # 外側2pxと内側2pxは確定値に戻す（半透明の内側を作らない）
+    inner = mask.copy()
+    for _ in range(2):
+        n = inner.copy()
+        n[1:, :] &= inner[:-1, :]
+        n[:-1, :] &= inner[1:, :]
+        n[:, 1:] &= inner[:, :-1]
+        n[:, :-1] &= inner[:, 1:]
+        inner = n
+    outer = ~mask
+    for _ in range(2):
+        n = outer.copy()
+        n[1:, :] |= outer[:-1, :]
+        n[:-1, :] |= outer[1:, :]
+        n[:, 1:] |= outer[:, :-1]
+        n[:, :-1] |= outer[:, 1:]
+        outer = n
+    a[inner] = 1.0
+    a[outer] = 0.0
 
-    # 影の名残（下端の低彩度グレー）を弱める: 彩度が低く暗い画素はアルファを下げる
-    rgb = arr.astype(np.float32)
-    mx = rgb.max(axis=2); mn = rgb.min(axis=2)
-    sat = (mx - mn) / np.maximum(mx, 1)
-    luminance = rgb.mean(axis=2)
-    shadowy = (sat < 0.12) & (luminance < 235) & (np.arange(h)[:, None] > h * 0.80)
-    a = np.where(shadowy, a * 0.25, a)
-
-    # --- 色デコンタミネーション（クリームの縁を差し引く） ---
+    # --- 色デコンタミネーション（縁のクリームを差し引く） ---
     af = np.clip(a, 0, 1)[..., None]
-    safe = np.maximum(af, 0.30)
+    safe = np.maximum(af, 0.35)
     dec = (rgb - (1 - af) * bg) / safe
     dec = np.clip(dec, 0, 255)
-    # ほぼ透明な部分は色も落としておく
     out_rgb = np.where(af > 0.02, dec, rgb)
 
     rgba = np.dstack([out_rgb, a * 255]).astype(np.uint8)
     out = Image.fromarray(rgba, "RGBA")
 
-    # バウンディングボックスで切り出し
     bbox = out.split()[3].getbbox()
     if bbox:
         out = out.crop(bbox)
 
-    # 512 のキャンバスへ（少し余白を持たせて中央配置）
     pad = 0.94
     target = int(size * pad)
     ow, oh = out.size
@@ -139,6 +195,29 @@ def cutout(path, size=512):
     out = out.resize((max(1, round(ow * scale)), max(1, round(oh * scale))), Image.LANCZOS)
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     canvas.paste(out, ((size - out.width) // 2, (size - out.height) // 2), out)
+
+    # --- 仕上げ: 内側は必ず alpha=255 に正規化（再サンプリングの半透明を消す） ---
+    fin = np.asarray(canvas).copy()
+    fa = fin[:, :, 3]
+    opaque = fa >= 128
+    # 外側2px(透明側)に接していない不透明画素は 255 とする
+    inner2 = opaque.copy()
+    for _ in range(2):
+        n = inner2.copy()
+        n[1:, :] &= inner2[:-1, :]
+        n[:-1, :] &= inner2[1:, :]
+        n[:, 1:] &= inner2[:, :-1]
+        n[:, :-1] &= inner2[:, 1:]
+        inner2 = n
+    fa[inner2] = 255
+    fin[:, :, 3] = fa
+    canvas = Image.fromarray(fin, "RGBA")
+    canvas = shrink_rgba(canvas)
+
+    if verbose:
+        h2 = int((fin[:, :, 3] < 250).sum())
+        print(f"  bg={bg.tolist()}  innerHolesFilled={holes_before}px  translucentPx={h2}")
+
     return canvas
 
 
@@ -152,7 +231,7 @@ def main():
         print("usage: cutout.py <in.png> <out.png> [--size 512]")
         return 1
     img = cutout(args[0], size)
-    img.save(args[1], optimize=True)
+    img.save(args[1], optimize=True, compress_level=9)
     print(f"{args[1]}  {img.size}  {img.mode}")
     return 0
 

@@ -17,7 +17,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import numpy as np
 import quickjs
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 JS_FILES = [
@@ -55,10 +57,11 @@ def run(ctx):
     ctx.set("_SEED", SEED)
     return ctx.eval("""
 (function(){
-  var RE = new RegExp('<img[^>]+src="assets/cats/[a-z]+-(kitten|adult)\\\\.png"', 'i');
   function actorOk(html) {
     var x = String(html || '');
-    return RE.test(x) && x.indexOf('collarBadge') >= 0 && x.indexOf('undefined') < 0 && x.indexOf('NaN') < 0;
+    return x.indexOf('src="assets/cats/') >= 0
+      && (x.indexOf('-kitten.png') >= 0 || x.indexOf('-adult.png') >= 0)
+      && x.indexOf('collarBadge') >= 0 && x.indexOf('undefined') < 0 && x.indexOf('NaN') < 0;
   }
   var out = {cats: [], assetErrors: [], errors: 0};
   var seed = _SEED;
@@ -250,7 +253,65 @@ def main():
                 total_bytes += p.stat().st_size
     print(f"  画像ファイル: {len(types) * 2 - len(missing_assets)}/{len(types) * 2} 枚 / 合計 {total_bytes/1024/1024:.2f}MB")
     check(not missing_assets, f"画像アセットが欠けている: {missing_assets}")
-    check(total_bytes < 4 * 1024 * 1024, "画像アセットが重すぎる（4MB超）")
+    # 1回の猫生で読み込むのは 2枚（子猫+成猫）だけ。総量は6MB、1枚300KB以内を上限とする
+    check(total_bytes < 6 * 1024 * 1024, "画像アセットが重すぎる（合計6MB超）")
+    heavy = [f"{t}-{st}" for t in types for st in ("kitten", "adult")
+             if (ROOT / "assets" / "cats" / f"{t}-{st}.png").exists()
+             and (ROOT / "assets" / "cats" / f"{t}-{st}.png").stat().st_size > 300 * 1024]
+    check(not heavy, f"1枚が重すぎるPNG: {heavy}")
+
+    # ---- 透過の検査（「透明な猫」バグの再発防止） ----
+    sys.path.insert(0, str(ROOT / "tools"))
+    import check_assets  # noqa: E402
+    print("\n--- 透過の検査 ---")
+    print("  全26枚: 512x512 RGBA / 体の内側に抜けは無いか / 内側は alpha=255 か")
+    bad_alpha = []
+    covers = []
+    for p in check_assets.expected_files(str(ROOT)):
+        ok, msg, info = check_assets.check_image(p)
+        covers.append(info["cover"])
+        if not ok:
+            bad_alpha.append(f"{Path(p).name}: {msg}")
+    print(f"  不透明部分の割合: 最小 {min(covers):.2f} / 最大 {max(covers):.2f}")
+    check(not bad_alpha, f"透過/サイズの異常: {bad_alpha}")
+
+    # ---- 首輪の位置（全26枚で首元に乗っているか） ----
+    print("\n--- 首輪の位置 ---")
+    collar = json.loads(ctx.eval("JSON.stringify(CATART.COLLAR)"))
+    keys = [f"{t}-{st}" for t in types for st in ("kitten", "adult")]
+    missing_c = [k for k in keys if k not in collar]
+    print(f"  座標マップ: {len(collar)}/{len(keys)} 枚ぶん")
+    check(not missing_c, f"首輪座標マップに欠け: {missing_c}")
+    check(len(collar) == len(keys), "首輪座標マップに余分なキーがある")
+    band_off = []
+    for k in keys:
+        c = collar.get(k)
+        if not c:
+            continue
+        a = np.asarray(Image.open(ROOT / "assets" / "cats" / f"{k}.png").convert("RGBA"))[:, :, 3]
+        W = a.shape[1]
+        w = c["w"] / 100 * W
+        bh = w * 52 / 120            # 首輪SVGの縦横比
+        cx = c["x"] / 100 * W
+        cy = c["y"] / 100 * a.shape[0]
+        pts = {
+            "左端": (cx - 0.36 * w, cy - 0.269 * bh),
+            "右端": (cx + 0.36 * w, cy - 0.269 * bh),
+            "帯": (cx, cy + 0.135 * bh),
+            "鈴": (cx, cy + 0.269 * bh),
+        }
+        for name, (px, py) in pts.items():
+            xi, yi = int(round(px)), int(round(py))
+            if not (0 <= xi < W and 0 <= yi < a.shape[0]) or a[yi, xi] < 128:
+                band_off.append(f"{k}:{name}")
+    print(f"  帯の左右端・中央・鈴が猫の体の上にある: {'OK' if not band_off else 'NG'}")
+    check(not band_off, f"首輪が体から外れている: {band_off}")
+    sample_actor = ctx.eval("(function(){var c=CATGACHA.rollCat(1); return CATART.actorHTML(c,{stage:'kitten'});})()")
+    check("--collar-x:" in sample_actor and "--collar-w:" in sample_actor,
+          "アクターHTMLに首輪の座標変数が入っていない")
+    kv = ctx.eval("JSON.stringify([CATART.collarVars('black','kitten'), CATART.collarVars('black','adult')])")
+    kk = json.loads(kv)
+    check(kk[0] != kk[1], "首輪の座標が子猫/成猫で切り替わらない")
 
     # マッピング網羅性
     cov = meta["coverage"]

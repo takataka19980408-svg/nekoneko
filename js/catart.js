@@ -7,6 +7,8 @@
   'use strict';
 
   const ASSET_DIR = 'assets/cats/';
+  /* 画像キャッシュ対策。画像を差し替えたらここも上げる（?v= が付いたURLで読む） */
+  const ASSET_V = '?v=20261123k';
   const TYPES = [
     'tabby', 'orange', 'black', 'white', 'calico', 'tuxedo', 'gray',
     'siamese', 'fluffy', 'lion', 'tiger', 'leopard', 'wildcat'
@@ -116,8 +118,12 @@
 
   function assetStage(stage) { return stage === 'kitten' ? 'kitten' : 'adult'; }
 
+  function imgPath(type, stage) {
+    return ASSET_DIR + (type || 'tabby') + '-' + assetStage(stage) + '.png' + ASSET_V;
+  }
+
   function assetPath(cat, stage) {
-    return ASSET_DIR + typeFor(cat) + '-' + assetStage(stage) + '.png';
+    return imgPath(typeFor(cat), stage);
   }
 
   /* ---------- 場面 ---------- */
@@ -248,15 +254,73 @@
     };
   }
 
-  /* ---------- 鈴付き首輪（SVG） ---------- */
+  /* ---------- 鈴付き首輪 ----------
+     26枚（13タイプ×子猫/成猫）それぞれの首元に合わせた座標マップ。
+     座標は画像に対する % （x=中心x, y=中心y, w=帯の幅, r=回転deg）。
+     tools/collar_map.py が画像のシルエットから首のくびれを推定し、
+     目視で確認・微調整した値を書き出す（全26枚を1枚ずつ検証済み）。 */
+  const COLLAR = {
+    'tabby-kitten': { x: 45.4, y: 51.0, w: 42.6, r: 0 },
+    'tabby-adult': { x: 44.5, y: 41.4, w: 34.7, r: 0 },
+    'orange-kitten': { x: 54.6, y: 56.4, w: 44.9, r: 0 },
+    'orange-adult': { x: 53.3, y: 49.6, w: 38.5, r: 0 },
+    'black-kitten': { x: 48.5, y: 58.6, w: 41.2, r: 0 },
+    'black-adult': { x: 45.3, y: 49.6, w: 36.5, r: 0 },
+    'white-kitten': { x: 45.4, y: 57.2, w: 43.5, r: 0 },
+    'white-adult': { x: 42.7, y: 50.2, w: 39.9, r: 0 },
+    'calico-kitten': { x: 53.7, y: 59.6, w: 49.6, r: 0 },
+    'calico-adult': { x: 52.5, y: 41.6, w: 31.5, r: 0 },
+    'tuxedo-kitten': { x: 47.3, y: 57.8, w: 43.3, r: 0 },
+    'tuxedo-adult': { x: 44.8, y: 56.5, w: 35.6, r: 0 },
+    'gray-kitten': { x: 43.7, y: 58.4, w: 44.4, r: 0 },
+    'gray-adult': { x: 41.6, y: 55.5, w: 39.6, r: 0 },
+    'siamese-kitten': { x: 46.8, y: 55.5, w: 40.1, r: 0 },
+    'siamese-adult': { x: 43.5, y: 47.5, w: 33.0, r: 0 },
+    'fluffy-kitten': { x: 47.0, y: 53.5, w: 41.0, r: 0 },
+    'fluffy-adult': { x: 37.8, y: 39.1, w: 48.0, r: 0 },
+    'lion-kitten': { x: 48.0, y: 58.8, w: 35.3, r: 0 },
+    'lion-adult': { x: 47.3, y: 52.9, w: 47.1, r: 0 },
+    'tiger-kitten': { x: 54.3, y: 60.7, w: 44.2, r: 0 },
+    'tiger-adult': { x: 55.7, y: 57.5, w: 38.7, r: 0 },
+    'leopard-kitten': { x: 49.5, y: 60.7, w: 43.5, r: 0 },
+    'leopard-adult': { x: 47.5, y: 58.8, w: 34.2, r: 0 },
+    'wildcat-kitten': { x: 59.1, y: 50.2, w: 38.1, r: 0 },
+    'wildcat-adult': { x: 55.7, y: 55.1, w: 37.4, r: 0 }
+  };
+
+  function collarFor(type, stage) {
+    const key = (type || 'tabby') + '-' + (stage === 'kitten' ? 'kitten' : 'adult');
+    return COLLAR[key] || COLLAR['tabby-adult'];
+  }
+
+  /* 首輪の位置を CSS 変数として書き出す（子猫↔成猫で座標が変わる） */
+  function collarVars(type, stage) {
+    const c = collarFor(type, stage);
+    return `--collar-x:${c.x}%;--collar-y:${c.y}%;--collar-w:${c.w}%;--collar-r:${c.r}deg;`;
+  }
+
   function collarHTML() {
     return `<span class="collar" id="collarBadge" aria-hidden="true">
       <svg viewBox="0 0 120 52">
-        <path d="M6 12 C26 40 94 40 114 12" fill="none" stroke="#F37E96" stroke-width="9" stroke-linecap="round"/>
-        <path d="M6 12 C26 40 94 40 114 12" fill="none" stroke="#FFB3C1" stroke-width="3.4" stroke-linecap="round" opacity=".7"/>
-        <circle cx="60" cy="40" r="11" fill="#FFD166" stroke="#D99A2B" stroke-width="2.6"/>
-        <circle cx="60" cy="40" r="4" fill="#C98A20"/>
-        <circle cx="56.5" cy="36.5" r="2.4" fill="#FFF7DC" opacity=".9"/>
+        <defs>
+          <linearGradient id="collarBandG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#FF9FB0"/>
+            <stop offset=".5" stop-color="#F1566F"/>
+            <stop offset="1" stop-color="#C6304B"/>
+          </linearGradient>
+          <radialGradient id="collarBellG" cx="35%" cy="28%" r="78%">
+            <stop offset="0" stop-color="#FFF6CC"/>
+            <stop offset=".55" stop-color="#FFD35C"/>
+            <stop offset="1" stop-color="#D2941A"/>
+          </radialGradient>
+        </defs>
+        <path d="M6 12 C26 40 94 40 114 12" fill="none" stroke="#7A1730" stroke-width="13" stroke-linecap="round" opacity=".22"/>
+        <path d="M6 12 C26 40 94 40 114 12" fill="none" stroke="url(#collarBandG)" stroke-width="9.6" stroke-linecap="round"/>
+        <path d="M8.5 9.6 C27 35.5 93 35.5 111.5 9.6" fill="none" stroke="#FFD3DC" stroke-width="2.6" stroke-linecap="round" opacity=".78"/>
+        <circle cx="60" cy="40" r="11" fill="url(#collarBellG)" stroke="#B47D14" stroke-width="2.2"/>
+        <path d="M53 45.5 C57.5 48.6 62.5 48.6 67 45.5" fill="none" stroke="#B47D14" stroke-width="1.8" opacity=".85"/>
+        <circle cx="60" cy="45.4" r="2.2" fill="#B47D14"/>
+        <circle cx="56.4" cy="36.2" r="3" fill="#FFFDF2" opacity=".92"/>
       </svg>
       <span class="collar-spark">✨</span>
     </span>`;
@@ -269,7 +333,7 @@
     const kittenOn = stage === 'kitten';
     const t = typeFor(cat);
     const alt = (cat && (cat.speciesName || cat.name)) || '猫';
-    return `<div class="cat-art ${kittenOn ? 'is-kitten' : 'is-adult'}" id="catArt" data-type="${t}">
+    return `<div class="cat-art ${kittenOn ? 'is-kitten' : 'is-adult'}" id="catArt" data-type="${t}" style="${collarVars(t, stage)}">
       <div class="cat-scale">
         <span class="nekomata-tail" aria-hidden="true"><svg viewBox="0 0 90 150">
           <path d="M22 146 C-2 112 10 74 42 58 C64 47 70 28 62 8" fill="none" stroke="#7FB4FF" stroke-width="9" stroke-linecap="round" opacity=".95"/>
@@ -279,8 +343,8 @@
         <span class="maneki-cushion" aria-hidden="true"></span>
         <span class="maneki-koban k1" aria-hidden="true">💰</span>
         <span class="maneki-koban k2" aria-hidden="true">🪙</span>
-        <img class="cat-img cat-img--kitten ${kittenOn ? 'is-on' : ''}" id="catImgKitten" src="${ASSET_DIR}${t}-kitten.png" alt="${escapeAttr(alt)}の子猫" draggable="false" decoding="async">
-        <img class="cat-img cat-img--adult ${kittenOn ? '' : 'is-on'}" id="catImgAdult" src="${ASSET_DIR}${t}-adult.png" alt="${escapeAttr(alt)}の成猫" draggable="false" decoding="async">
+        <img class="cat-img cat-img--kitten ${kittenOn ? 'is-on' : ''}" id="catImgKitten" src="${imgPath(t, 'kitten')}" alt="${escapeAttr(alt)}の子猫" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+        <img class="cat-img cat-img--adult ${kittenOn ? '' : 'is-on'}" id="catImgAdult" src="${imgPath(t, 'adult')}" alt="${escapeAttr(alt)}の成猫" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
         ${collarHTML()}
         <span class="growth-spark" aria-hidden="true">✨</span>
       </div>
@@ -292,7 +356,7 @@
   function heroHTML(cat) {
     const t = cat ? typeFor(cat) : 'tabby';
     return `<div class="hero-cat">
-      <img class="hero-img" src="${ASSET_DIR}${t}-kitten.png" alt="子猫のイラスト" draggable="false">
+      <img class="hero-img" src="${imgPath(t, 'kitten')}" alt="子猫のイラスト" draggable="false" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
       <span class="hero-shadow" aria-hidden="true"></span>
     </div>`;
   }
@@ -302,10 +366,11 @@
   }
 
   const api = {
-    ASSET_DIR, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
-    typeFor, assetPath, assetStage, patternType, colorFamily,
+    ASSET_DIR, ASSET_V, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
+    typeFor, assetPath, imgPath, assetStage, patternType, colorFamily,
     sceneKeyFor, sceneLabel, sceneClassOf, particlesFor, particlesHTML,
-    statsFor, statsHTML, bubbleFor, collarHTML, actorHTML, heroHTML
+    statsFor, statsHTML, bubbleFor, collarHTML, actorHTML, heroHTML,
+    COLLAR, collarFor, collarVars
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.CATART = api;

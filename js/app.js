@@ -573,6 +573,12 @@
         else { imgA.classList.add('is-on'); imgK.classList.remove('is-on'); }
       }
 
+      /* 首輪は子猫と成猫で首の位置が違うので、ステージに合わせて座標を差し替える */
+      if (art && A.collarVars) {
+        const type = (art.dataset && art.dataset.type) || A.typeFor(cat);
+        art.style.cssText = A.collarVars(type, stage);
+      }
+
       if (state.shownStage === 'kitten' && stage !== 'kitten') {
         if (art) {
           art.classList.remove('is-growing');
