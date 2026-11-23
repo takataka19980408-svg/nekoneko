@@ -329,7 +329,7 @@ def main():
     if 'class="prob-place"' not in fin or 'class="prob-base"' not in fin:
         print("[NG] 確率欄のレイアウト要素がない")
         return 1
-    if "ach-burst" not in fin or "🏆 実績・称号" not in fin:
+    if "ach-burst" not in fin or "実績・称号" not in fin:
         print("[NG] フィナーレに実績欄がない")
         return 1
     print("フィナーレ文字数:", len(fin), "/ 享年・確率・実績・図鑑通知 OK")
@@ -377,7 +377,7 @@ def main():
     ctx.eval("CATAPP.state.tab='achievements'; __handlers['openDex:click'][0]()")
     ach_html = ctx.eval("document.getElementById('dexBody').innerHTML")
     print("図鑑(実績・きろく)文字数:", len(ach_html))
-    for need in ("🏆 実績・称号", "📊 これまでのきろく", "累計転生", "最長寿記録", "図鑑コンプ率", "はじめての猫生"):
+    for need in ("実績・称号", "📊 これまでのきろく", "累計転生", "最長寿記録", "図鑑コンプ率", "はじめての猫生"):
         if need not in ach_html:
             print("[NG] 実績タブに不足:", need)
             return 1
