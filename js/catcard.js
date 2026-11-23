@@ -21,6 +21,10 @@
     nekomata: '猫又', maneki: '看板猫'
   };
   const RARITY_COLOR = { N: '#b9afa8', R: '#5b9be0', SR: '#a273e6', SSR: '#e39a1c', UR: '#e2678f' };
+  const STATUS_ICON = [
+    ['野生のネコ科', '🐆'], ['動物園', '🎪'], ['野生化', '🌿'], ['地域猫', '🏘'],
+    ['血統書', '📜'], ['飼い猫', '🏠'], ['野良猫', '🌃']
+  ];
 
   /* ---------- 小さな描画ヘルパ ---------- */
   function roundRect(ctx, x, y, w, h, r) {
@@ -116,7 +120,11 @@
       : rec.route === 'purebred' ? '純血種' : '雑種');
     const coat = rec.breed || rec.pattern || '';
     const tags = [];
-    if (rec.statusLabel) tags.push(rec.statusLabel);
+    if (rec.statusLabel) {
+      let ic = '';
+      STATUS_ICON.forEach(p => { if (!ic && rec.statusLabel.indexOf(p[0]) >= 0) ic = p[1]; });
+      tags.push((ic ? ic + ' ' : '') + rec.statusLabel);
+    }
     if (rec.adopted) tags.push(rec.maneki ? '🏮 お店の子' : '🏡 家族の子');
     if (rec.bossCat) tags.push('👑 ボス猫');
     if (rec.nekomata) tags.push('🔮 猫又');
@@ -361,12 +369,12 @@
     /* 代表の一言 */
     if (data.caption) {
       ctx.font = '700 30px ' + FONT;
-      const lines = wrap(ctx, data.caption, 830, 2);
+      const lines = wrap(ctx, data.caption, 840, 3);
       const cut = lines.join('').length < String(data.caption).length;
-      const startY = 1102;
+      const startY = lines.length > 2 ? 1064 : 1092;
       lines.forEach((ln, i) => {
         const body = (i === 0 ? '「' : '') + ln + (i === lines.length - 1 ? (cut ? '…」' : '」') : '');
-        e(ctx, body, 540, startY + i * 44, 30, INK2, { align: 'center', weight: '700' });
+        e(ctx, body, 540, startY + i * 40, 29, INK2, { align: 'center', weight: '700' });
       });
     }
 

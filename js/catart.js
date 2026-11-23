@@ -224,6 +224,7 @@
   function statsHTML(cat, idx) {
     const cur = statsFor(cat, idx);
     const prev = idx > 0 ? statsFor(cat, idx - 1) : cur;
+    const dead = !!(cat && cat.story && cat.story[idx] && cat.story[idx].kind === 'death');
     const rows = [
       { k: 'energy', icon: '❤️', name: 'たいりょく', cls: 'hp' },
       { k: 'food', icon: '🐟', name: 'おなか', cls: 'food' },
@@ -237,7 +238,8 @@
         : '';
       /* ステータスと運命の連動を、その場で小さく知らせる */
       let mod = '', flag = '';
-      if (r.k === 'energy' && v <= 20) { mod = ' is-pinch'; flag = 'ピンチ'; }
+      if (dead) { /* 最期のページではピンチ/空腹/幸運のサインは出さない */ }
+      else if (r.k === 'energy' && v <= 20) { mod = ' is-pinch'; flag = 'ピンチ'; }
       else if (r.k === 'food' && v <= 20) { mod = ' is-hungry'; flag = '空腹'; }
       else if (r.k === 'luck' && v >= 70) { mod = ' is-lucky'; flag = '幸運'; }
       return `<div class="stat stat--${r.cls}${mod}"${flag ? ` data-flag="${flag}"` : ''}>

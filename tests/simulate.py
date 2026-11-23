@@ -806,6 +806,7 @@ def main():
             if (f.pinch) { out.pinchSteps++; has.pinch = true; }
             if (f.hungry) { out.hungrySteps++; has.hungry = true; }
             if (f.lucky) { out.luckySteps++; has.lucky = true; }
+            if (c.story[i].kind === 'death') continue;
             var h = CATART.statsHTML(c, i);
             var pinchFlag = h.indexOf('is-pinch') >= 0 && h.indexOf('data-flag="ピンチ"') >= 0;
             var hungryFlag = h.indexOf('is-hungry') >= 0 && h.indexOf('data-flag="空腹"') >= 0;

@@ -644,7 +644,6 @@
           <span class="album-line">🌈 享年 <b>${ageText(ageY)}</b>${stats ? `　❤️${stats.energy} 🐟${stats.food} 🍀${stats.luck}` : ''}</span>
           <span class="album-flags">${albumFlagsHTML(rec)}</span>
         </span>
-        <span class="album-arrow" aria-hidden="true">›</span>
       </div>
       <button class="album-star${fav ? ' is-on' : ''}" data-fav="${rec.id}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りから外す' : 'お気に入りに登録'}">${fav ? '★' : '☆'}</button>
     </div>`;
