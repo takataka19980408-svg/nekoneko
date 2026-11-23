@@ -282,9 +282,9 @@
 
   /* 年齢ステージ：子猫は頭が大きく体がちいさい、シニアは少し小ぶりで落ち着いた姿 */
   const STAGE_SCALE = {
-    kitten: { head: 1.26, body: 0.82 },
+    kitten: { head: 1.26, body: 0.88 },
     adult: { head: 1.0, body: 1.0 },
-    senior: { head: 0.97, body: 0.96 }
+    senior: { head: 0.97, body: 1.0 }
   };
   const STAGE_LABEL = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
 
@@ -315,17 +315,14 @@
       // 子猫は耳を短め・丸めに（頭の中心に向かって縮める）
       const k = 0.8;
       ears = {
-        l: ears.l.map(q => [160 + (q[0] - 160) * k, 128 + (q[1] - 128) * k]),
-        r: ears.r.map(q => [160 + (q[0] - 160) * k, 128 + (q[1] - 128) * k])
+        l: ears.l.map(q => [160 + (q[0] - 160) * k, 132 + (q[1] - 132) * k]),
+        r: ears.r.map(q => [160 + (q[0] - 160) * k, 132 + (q[1] - 132) * k])
       };
     }
     const sg = STAGE_SCALE[stage] || STAGE_SCALE.adult;
-    const neck = stage === 'kitten' ? { cy: 196, rx: 45, ry: 32 }
-      : stage === 'senior' ? { cy: 186, rx: 39, ry: 23 }
-        : { cy: 184, rx: 39, ry: 22 };
     return {
-      big, earType, ears, stage, neck,
-      head: { x: 160, y: 128, r: big ? 60 : 58 },
+      big, earType, ears, stage,
+      head: { x: 160, y: 132, r: big ? 60 : 58 },
       headScale: sg.head,
       bodyScale: sg.body,
       body: { x: 160, y: 254 },
@@ -716,8 +713,6 @@
     <path d="${BODY_PATH}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
     ${legs}
     ${ruff}
-    <ellipse cx="160" cy="${g.neck.cy}" rx="${g.neck.rx}" ry="${g.neck.ry}" fill="${fill}"/>
-    <ellipse cx="160" cy="${(g.neck.cy + g.neck.ry * 0.55).toFixed(1)}" rx="${(g.neck.rx * 0.86).toFixed(1)}" ry="${(g.neck.ry * 0.42).toFixed(1)}" fill="#000" opacity=".045"/>
   </g>
   <g transform="${headT}">
     ${mane}
