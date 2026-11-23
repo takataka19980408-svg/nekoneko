@@ -1599,7 +1599,7 @@ body::before {
   color: var(--pink-3);
   white-space: nowrap;
   box-shadow: 0 8px 20px rgba(198, 141, 120, .26);
-  animation: floatUp 2s ease-out forwards;
+  animation: floatUp 3s ease-out forwards;
 }
 .bubble b { margin-right: 3px; }
 @keyframes floatUp {
