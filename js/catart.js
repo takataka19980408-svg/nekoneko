@@ -8,46 +8,59 @@
 
   const ASSET_DIR = 'assets/cats/';
   /* 画像キャッシュ対策。画像を差し替えたらここも上げる（?v= が付いたURLで読む） */
-  const ASSET_V = '?v=20261123k';
+  const ASSET_V = '?v=20261124n';
   const TYPES = [
     'tabby', 'orange', 'black', 'white', 'calico', 'tuxedo', 'gray',
-    'siamese', 'fluffy', 'lion', 'tiger', 'leopard', 'wildcat'
+    'siamese', 'fluffy', 'lion', 'tiger', 'leopard', 'wildcat', 'scottish',
+    'sphynx', 'munchkin', 'persian', 'curl', 'russian', 'bengal',
+    'abyssinian', 'tortie', 'mainecoon', 'ragdoll', 'bobtail', 'snowleopard',
+    'cheetah', 'pallas', 'serval', 'caracal', 'puma', 'lynx', 'rex'
   ];
 
   /* ---------- 野生のネコ科（46種）→ アセット ---------- */
   const WILD_MAP = {
-    lion: 'lion', asiatic_lion: 'lion',
-    tiger: 'tiger', amur_tiger: 'tiger', sumatran_tiger: 'tiger',
-    leopard: 'leopard', snow_leopard: 'leopard', jaguar: 'leopard', cheetah: 'leopard',
-    clouded_leopard: 'leopard', sunda_clouded: 'leopard', amur_leopard: 'leopard',
-    puma: 'leopard', florida_panther: 'leopard'
+    lion: 'lion', asiatic_lion: 'lion', tiger: 'tiger', amur_tiger: 'tiger',
+    sumatran_tiger: 'tiger', leopard: 'leopard', jaguar: 'leopard', clouded_leopard: 'leopard',
+    sunda_clouded: 'leopard', amur_leopard: 'leopard', marbled_cat: 'leopard', chinese_mountain: 'leopard',
+    asian_golden: 'leopard', bay_cat: 'leopard', african_golden: 'leopard', ocelot: 'leopard',
+    margay: 'leopard', oncilla: 'leopard', southern_tiger: 'leopard', geoffroy: 'leopard',
+    kodkod: 'leopard', pampas: 'leopard', andean: 'leopard', snow_leopard: 'snowleopard',
+    cheetah: 'cheetah', serval: 'serval', caracal: 'caracal', manul: 'pallas',
+    sand_cat: 'pallas', puma: 'puma', florida_panther: 'puma', jaguarundi: 'puma',
+    eurasian_lynx: 'lynx', canada_lynx: 'lynx', iberian_lynx: 'lynx', bobcat: 'lynx',
+    leopard_cat: 'bengal', iriomote: 'bengal', tsushima: 'bengal', rusty_spotted: 'bengal',
+    blackfooted: 'bengal', euro_wildcat: 'wildcat', african_wildcat: 'wildcat', fishing_cat: 'wildcat',
+    flat_headed: 'wildcat', jungle_cat: 'caracal',
   };
 
   /* ---------- 雑種の毛柄（14種）→ アセット ---------- */
   const COAT_MAP = {
-    kijitora: 'tabby', chatora: 'orange', sabatora: 'gray', kuro: 'black',
-    shiro: 'white', hachiware: 'tuxedo', mike: 'calico', sabi: 'calico',
-    buchi: 'calico', gray: 'gray', point: 'siamese', longmix: 'fluffy',
-    cream: 'white', tabbywhite: 'tabby'
+    kijitora: 'tabby', tabbywhite: 'tabby', chatora: 'orange', sabatora: 'gray', gray: 'gray',
+    kuro: 'black', shiro: 'white', cream: 'white', hachiware: 'tuxedo', mike: 'calico',
+    buchi: 'calico', sabi: 'tortie', point: 'siamese', longmix: 'fluffy',
   };
 
   /* ---------- 純血種（74種）のうち、見た目がはっきり違うもの ---------- */
   const BREED_MAP = {
-    mainecoon: 'fluffy', norwegian: 'fluffy', siberian: 'fluffy', persian: 'fluffy',
-    exotic_sh: 'fluffy', british_lh: 'fluffy', ragamuffin: 'fluffy', somali: 'fluffy',
-    selkirk_rex: 'fluffy', laperm: 'fluffy', kurilian_bobtail: 'fluffy',
-    ragdoll: 'siamese', birman: 'siamese', balinese: 'siamese', thai: 'siamese',
-    oriental_sh: 'siamese', colorpoint_sh: 'siamese', snowshoe: 'siamese',
-    tonkinese: 'siamese', ojo_azules: 'siamese', siam: 'siamese',
-    bombay: 'black', havana_brown: 'black', york_chocolate: 'black', suphalak: 'black',
-    khao_manee: 'white', turkish_angora: 'white', turkish_van: 'white', vankedisi: 'white',
-    sphynx: 'white', peterbald: 'white', donskoy: 'white', bambino: 'white',
-    minskin: 'white', dwelf: 'white', ukrainian_levkoy: 'white',
-    bengal: 'leopard', ocicat: 'leopard', egyptian_mau: 'leopard', savannah: 'leopard',
-    serengeti: 'leopard', cheetoh: 'leopard', arabian_mau: 'leopard',
-    toyger: 'tiger',
-    japanese_bobtail: 'calico', manx: 'gray', lykoi: 'gray', chartreux: 'gray',
-    russian_blue: 'gray', british: 'gray', korat: 'gray'
+    mainecoon: 'mainecoon', norwegian: 'mainecoon', siberian: 'mainecoon', ragamuffin: 'mainecoon',
+    scottish: 'scottish', munchkin: 'munchkin', minuet: 'munchkin', skookum: 'munchkin',
+    kinkalow: 'munchkin', ragdoll: 'ragdoll', birman: 'ragdoll', balinese: 'ragdoll',
+    british: 'gray', american_sh: 'gray', scottish_straight: 'gray', persian: 'persian',
+    exotic_sh: 'persian', russian_blue: 'russian', chartreux: 'russian', korat: 'russian',
+    bengal: 'bengal', ocicat: 'bengal', egyptian_mau: 'bengal', arabian_mau: 'bengal',
+    cheetoh: 'bengal', serengeti: 'bengal', australian_mist: 'bengal', sphynx: 'sphynx',
+    peterbald: 'sphynx', donskoy: 'sphynx', bambino: 'sphynx', minskin: 'sphynx',
+    dwelf: 'sphynx', ukrainian_levkoy: 'sphynx', lykoi: 'sphynx', siam: 'siamese',
+    tonkinese: 'siamese', thai: 'siamese', colorpoint_sh: 'siamese', burmese: 'siamese',
+    snowshoe: 'siamese', abyssinian: 'abyssinian', somali: 'abyssinian', singapura: 'abyssinian',
+    oriental_sh: 'abyssinian', chausie: 'abyssinian', sokoke: 'abyssinian', turkish_angora: 'white',
+    turkish_van: 'white', khao_manee: 'white', vankedisi: 'white', ojos_azules: 'white',
+    bombay: 'black', havana_brown: 'black', suphalak: 'black', manx: 'bobtail',
+    japanese_bobtail: 'bobtail', kurilian_bobtail: 'bobtail', american_bobtail: 'bobtail', toybob: 'bobtail',
+    american_curl: 'curl', highlander: 'curl', cornish_rex: 'rex', devon_rex: 'rex',
+    german_rex: 'rex', selkirk_rex: 'rex', laperm: 'rex', american_wirehair: 'rex',
+    york_chocolate: 'rex', savannah: 'serval', toyger: 'tiger', pixie_bob: 'lynx',
+    british_lh: 'fluffy', european_sh: 'tabby',
   };
 
   /* ---------- 色から毛色ファミリーを判定 ---------- */
@@ -85,7 +98,7 @@
     if (pattern === 'rosette' || pattern === 'rosette_big' || pattern === 'spotted' || pattern === 'cheetah') return 'leopard';
     if (pattern === 'tiger') return 'tiger';
     if (p.longhair || p.fluffy) return 'fluffy';
-    if (p.hairless) return colorFamily(p.fill || p.base) === 'black' ? 'gray' : 'white';
+    if (p.hairless) return 'sphynx';
     const fam = colorFamily(p.fill || p.base);
     if (pattern === 'mackerel' || pattern === 'ticked') {
       if (fam === 'orange') return 'orange';
@@ -94,6 +107,19 @@
       return 'tabby';
     }
     return fam;
+  }
+
+  /* 品種の体つきの特徴（耳・毛・脚・尻尾）から、いちばん近い絵を選ぶ */
+  function shapeType(p) {
+    const ears = String(p.ears || '');
+    if (ears === 'fold') return 'scottish';
+    if (ears === 'curl') return 'curl';
+    if (p.hairless) return 'sphynx';
+    if (p.flat) return 'persian';
+    if (p.curly) return 'rex';
+    if (p.bobtail) return 'bobtail';
+    if (p.longhair && (p.big || p.ruff >= 0.6 || p.tall)) return 'mainecoon';
+    return null;
   }
 
   /* 引いた猫1匹 → アセットタイプ */
@@ -113,7 +139,7 @@
       if (BREED_MAP[k]) return BREED_MAP[k];
     }
     if (cat.special) return 'tuxedo';
-    return patternType(cat.pattern || {});
+    return shapeType(cat.pattern || {}) || patternType(cat.pattern || {});
   }
 
   function assetStage(stage) { return stage === 'kitten' ? 'kitten' : 'adult'; }
@@ -267,32 +293,72 @@
      tools/collar_map.py が画像のシルエットから首のくびれを推定し、
      目視で確認・微調整した値を書き出す（全26枚を1枚ずつ検証済み）。 */
   const COLLAR = {
-    'tabby-kitten': { x: 45.4, y: 51.0, w: 42.6, r: 0 },
-    'tabby-adult': { x: 44.5, y: 41.4, w: 34.7, r: 0 },
-    'orange-kitten': { x: 54.6, y: 56.4, w: 44.9, r: 0 },
-    'orange-adult': { x: 53.3, y: 49.6, w: 38.5, r: 0 },
-    'black-kitten': { x: 48.5, y: 58.6, w: 41.2, r: 0 },
-    'black-adult': { x: 45.3, y: 49.6, w: 36.5, r: 0 },
-    'white-kitten': { x: 45.4, y: 57.2, w: 43.5, r: 0 },
-    'white-adult': { x: 42.7, y: 50.2, w: 39.9, r: 0 },
-    'calico-kitten': { x: 53.7, y: 59.6, w: 49.6, r: 0 },
-    'calico-adult': { x: 52.5, y: 41.6, w: 31.5, r: 0 },
-    'tuxedo-kitten': { x: 47.3, y: 57.8, w: 43.3, r: 0 },
-    'tuxedo-adult': { x: 44.8, y: 56.5, w: 35.6, r: 0 },
-    'gray-kitten': { x: 43.7, y: 58.4, w: 44.4, r: 0 },
-    'gray-adult': { x: 41.6, y: 55.5, w: 39.6, r: 0 },
-    'siamese-kitten': { x: 46.8, y: 55.5, w: 40.1, r: 0 },
-    'siamese-adult': { x: 43.5, y: 47.5, w: 33.0, r: 0 },
-    'fluffy-kitten': { x: 47.0, y: 53.5, w: 41.0, r: 0 },
-    'fluffy-adult': { x: 37.8, y: 39.1, w: 48.0, r: 0 },
-    'lion-kitten': { x: 48.0, y: 58.8, w: 35.3, r: 0 },
-    'lion-adult': { x: 47.3, y: 52.9, w: 47.1, r: 0 },
-    'tiger-kitten': { x: 54.3, y: 60.7, w: 44.2, r: 0 },
-    'tiger-adult': { x: 55.7, y: 57.5, w: 38.7, r: 0 },
-    'leopard-kitten': { x: 49.5, y: 60.7, w: 43.5, r: 0 },
-    'leopard-adult': { x: 47.5, y: 58.8, w: 34.2, r: 0 },
-    'wildcat-kitten': { x: 59.1, y: 50.2, w: 38.1, r: 0 },
-    'wildcat-adult': { x: 55.7, y: 55.1, w: 37.4, r: 0 }
+    'tabby-kitten': { x: 45.9, y: 54.4, w: 37.5, r: 0.0 },
+    'tabby-adult': { x: 44.3, y: 34.9, w: 27.6, r: 0.0 },
+    'orange-kitten': { x: 54.2, y: 57.8, w: 38.3, r: 0.0 },
+    'orange-adult': { x: 51.5, y: 37.5, w: 28.2, r: 0.0 },
+    'black-kitten': { x: 48.4, y: 58.4, w: 34.7, r: 0.0 },
+    'black-adult': { x: 44.6, y: 36.6, w: 27.4, r: 0.0 },
+    'white-kitten': { x: 45.8, y: 60.5, w: 38.1, r: 0.0 },
+    'white-adult': { x: 42.2, y: 37.5, w: 35.3, r: 0.0 },
+    'calico-kitten': { x: 53.6, y: 56.9, w: 40.4, r: 0.0 },
+    'calico-adult': { x: 52.0, y: 34.3, w: 24.1, r: 0.0 },
+    'tuxedo-kitten': { x: 46.3, y: 58.2, w: 37.1, r: 0.0 },
+    'tuxedo-adult': { x: 42.6, y: 36.5, w: 24.5, r: 0.0 },
+    'gray-kitten': { x: 43.9, y: 57.4, w: 36.7, r: 0.0 },
+    'gray-adult': { x: 41.2, y: 38.2, w: 27.4, r: 0.0 },
+    'siamese-kitten': { x: 45.7, y: 58.5, w: 36.3, r: 0.0 },
+    'siamese-adult': { x: 42.7, y: 36.9, w: 20.1, r: 0.0 },
+    'fluffy-kitten': { x: 48.3, y: 50.2, w: 35.0, r: 0.0 },
+    'fluffy-adult': { x: 37.9, y: 44.4, w: 34.0, r: 0.0 },
+    'lion-kitten': { x: 49.3, y: 61.3, w: 31.8, r: 0.0 },
+    'lion-adult': { x: 46.6, y: 51.5, w: 46.0, r: 0.0 },
+    'tiger-kitten': { x: 54.4, y: 58.5, w: 35.7, r: 0.0 },
+    'tiger-adult': { x: 54.4, y: 35.2, w: 25.6, r: 0.0 },
+    'leopard-kitten': { x: 49.5, y: 53.2, w: 32.7, r: 0.0 },
+    'leopard-adult': { x: 45.2, y: 45.7, w: 28.0, r: 0.0 },
+    'wildcat-kitten': { x: 58.9, y: 53.2, w: 33.7, r: 0.0 },
+    'wildcat-adult': { x: 57.6, y: 33.7, w: 22.5, r: 0.0 },
+    'scottish-kitten': { x: 45.4, y: 51.7, w: 41.4, r: 0.0 },
+    'scottish-adult': { x: 43.6, y: 36.8, w: 37.1, r: 0.0 },
+    'sphynx-kitten': { x: 47.3, y: 52.9, w: 24.5, r: 0.0 },
+    'sphynx-adult': { x: 44.5, y: 37.1, w: 16.6, r: 0.0 },
+    'munchkin-kitten': { x: 43.5, y: 63.1, w: 50.0, r: 0.0 },
+    'munchkin-adult': { x: 41.4, y: 56.2, w: 38.0, r: 0.0 },
+    'persian-kitten': { x: 45.3, y: 53.8, w: 34.0, r: 0.0 },
+    'persian-adult': { x: 39.0, y: 39.2, w: 38.0, r: 0.0 },
+    'curl-kitten': { x: 46.6, y: 51.7, w: 38.1, r: 0.0 },
+    'curl-adult': { x: 42.7, y: 36.7, w: 31.6, r: 0.0 },
+    'russian-kitten': { x: 45.1, y: 53.7, w: 35.1, r: 0.0 },
+    'russian-adult': { x: 40.4, y: 34.8, w: 23.5, r: 0.0 },
+    'bengal-kitten': { x: 44.6, y: 52.1, w: 34.3, r: 0.0 },
+    'bengal-adult': { x: 40.1, y: 35.0, w: 23.3, r: 0.0 },
+    'abyssinian-kitten': { x: 47.7, y: 53.0, w: 27.5, r: 0.0 },
+    'abyssinian-adult': { x: 44.7, y: 40.8, w: 20.0, r: 0.0 },
+    'tortie-kitten': { x: 45.7, y: 54.8, w: 37.5, r: 0.0 },
+    'tortie-adult': { x: 41.5, y: 35.9, w: 29.8, r: 0.0 },
+    'mainecoon-kitten': { x: 42.6, y: 61.9, w: 45.4, r: 0.0 },
+    'mainecoon-adult': { x: 39.4, y: 31.1, w: 30.8, r: 0.0 },
+    'ragdoll-kitten': { x: 44.7, y: 52.8, w: 47.2, r: 0.0 },
+    'ragdoll-adult': { x: 37.8, y: 31.1, w: 32.0, r: 0.0 },
+    'bobtail-kitten': { x: 47.0, y: 52.8, w: 33.7, r: 0.0 },
+    'bobtail-adult': { x: 41.6, y: 32.9, w: 20.5, r: 0.0 },
+    'snowleopard-kitten': { x: 40.2, y: 47.3, w: 40.0, r: 0.0 },
+    'snowleopard-adult': { x: 35.4, y: 31.8, w: 37.9, r: 0.0 },
+    'cheetah-kitten': { x: 45.5, y: 48.4, w: 33.1, r: 0.0 },
+    'cheetah-adult': { x: 42.3, y: 29.8, w: 20.7, r: 0.0 },
+    'pallas-kitten': { x: 46.0, y: 54.7, w: 39.8, r: 0.0 },
+    'pallas-adult': { x: 45.9, y: 49.5, w: 46.0, r: 0.0 },
+    'serval-kitten': { x: 48.4, y: 49.7, w: 18.9, r: 0.0 },
+    'serval-adult': { x: 45.9, y: 38.0, w: 16.4, r: 0.0 },
+    'caracal-kitten': { x: 49.5, y: 53.5, w: 21.9, r: 0.0 },
+    'caracal-adult': { x: 47.1, y: 46.9, w: 22.0, r: 0.0 },
+    'puma-kitten': { x: 43.8, y: 48.4, w: 32.9, r: 0.0 },
+    'puma-adult': { x: 37.8, y: 30.4, w: 26.2, r: 0.0 },
+    'lynx-kitten': { x: 47.4, y: 62.6, w: 38.9, r: 0.0 },
+    'lynx-adult': { x: 46.0, y: 54.3, w: 37.0, r: 0.0 },
+    'rex-kitten': { x: 46.4, y: 51.4, w: 23.5, r: 0.0 },
+    'rex-adult': { x: 40.0, y: 36.7, w: 13.2, r: 0.0 },
   };
 
   function collarFor(type, stage) {
@@ -403,7 +469,7 @@
 
   const api = {
     ASSET_DIR, ASSET_V, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
-    typeFor, assetPath, imgPath, assetStage, patternType, colorFamily,
+    typeFor, shapeType, assetPath, imgPath, assetStage, patternType, colorFamily,
     sceneKeyFor, sceneLabel, sceneClassOf, particlesFor, particlesHTML,
     statsFor, statsHTML, bubbleFor, collarHTML, actorHTML, stillHTML, heroHTML,
     COLLAR, collarFor, collarVars

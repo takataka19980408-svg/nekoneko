@@ -2,7 +2,7 @@
 """assets/cats/*.png の品質検査（テストからも使う）。
 
 検査項目:
-1. 26枚（13タイプ×kitten/adult）がすべて存在し、512x512 RGBA である
+1. 全タイプ×kitten/adult（現状66枚）がすべて存在し、512x512 RGBA である
 2. 外周から届かない透明の穴（＝透明な猫バグ）が 0
 3. 猫の体の内側は alpha=255（半点もない）。内側の半透明は輪郭2px以内のみ許可
 4. 不透明部分が画像の 8% 以上ある（真っ白/真っ黒に飛んでいない）
@@ -15,9 +15,19 @@ from collections import deque
 import numpy as np
 from PIL import Image
 
-TYPES = ['tabby', 'orange', 'black', 'white', 'calico', 'tuxedo', 'gray',
-         'siamese', 'fluffy', 'lion', 'tiger', 'leopard', 'wildcat']
 STAGES = ['kitten', 'adult']
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def types_from_catart():
+    """js/catart.js の TYPES を唯一の正とする（絵を足したら自動で検査対象が増える）。"""
+    src = open(os.path.join(HERE, '..', 'js', 'catart.js'), encoding='utf-8').read()
+    body = src[src.index('const TYPES = ['):]
+    body = body[:body.index('];')]
+    return [t for t in body.replace('const TYPES = [', '').replace("'", '').split(',') if t.strip() and t.strip() not in ('', ']')]
+
+
+TYPES = [t.strip() for t in types_from_catart()]
 
 
 def expected_files(root):

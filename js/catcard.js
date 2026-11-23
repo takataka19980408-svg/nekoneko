@@ -20,7 +20,6 @@
     starve: '飢え', fight: 'ケンカ', human: '人の手', pinch: '不慮の事故',
     nekomata: '猫又', maneki: '看板猫'
   };
-  const RARITY_COLOR = { N: '#b9afa8', R: '#5b9be0', SR: '#a273e6', SSR: '#e39a1c', UR: '#e2678f' };
   const STATUS_ICON = [
     ['野生のネコ科', '🐆'], ['動物園', '🎪'], ['野生化', '🌿'], ['地域猫', '🏘'],
     ['血統書', '📜'], ['飼い猫', '🏠'], ['野良猫', '🌃']
@@ -159,7 +158,6 @@
       ageLabel: (E.ageText ? E.ageText(age) : Math.floor(age) + '歳'),
       cause: CAUSE_JP[death] || '',
       deathKey: death,
-      rarity: rec.rarity || 'N',
       probability: prob,
       oneIn: E.formatOneIn ? E.formatOneIn(prob) : '—',
       probText: E.formatProb ? E.formatProb(prob) : '',
@@ -376,9 +374,15 @@
     e(ctx, '✨ 珍しさ', 584, boxY + 40, 22, INK3, { weight: '800' });
     const rareLine = data.oneIn + (data.probText ? '（' + data.probText + '）' : '');
     e(ctx, rareLine, 584, boxY + 84, fitFont(ctx, rareLine, boxW - 40, 31, '900'), INK, { weight: '900' });
-    const rc = RARITY_COLOR[data.rarity] || RARITY_COLOR.N;
-    fillRound(ctx, 916, 196, 68, 34, 17, rc);
-    e(ctx, data.rarity, 950, 219, 19, '#fff', { align: 'center' });
+    /* ソシャゲのランクは出さない。珍しい子だけ、確率の言葉をそっと添える */
+    const EG = root.CATGACHA || {};
+    const rw = (EG.rareWord ? EG.rareWord(data.probability) : null);
+    if (rw) {
+      ctx.font = '900 24px ' + FONT;
+      const tw = ctx.measureText(rw.text).width;
+      fillRound(ctx, 540 - tw / 2 - 24, 152, tw + 48, 46, 23, '#fff1e0');
+      e(ctx, rw.text, 540, 183, 24, '#b9742c', { align: 'center', weight: '900' });
+    }
 
     /* 代表の一言 */
     if (data.caption) {
@@ -423,7 +427,7 @@
     return 'catgacha-' + who + '.png';
   }
 
-  const api = { W: W, H: H, CAUSE_JP: CAUSE_JP, RARITY_COLOR: RARITY_COLOR, cardData: cardData, draw: draw, render: render, fileName: fileName };
+  const api = { W: W, H: H, CAUSE_JP: CAUSE_JP, cardData: cardData, draw: draw, render: render, fileName: fileName };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.CATCARD = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

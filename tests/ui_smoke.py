@@ -2,7 +2,8 @@
 ブラウザ無しで init() → ガチャ → 子猫誕生 → 猫生を歩む（手動/オート）→ 最期（フィナーレ）→ 図鑑
 の一連を実行し、要素IDの取り違えや実行時エラーを検出する。
 
-新機能（オート進行・選択肢による分岐・年齢の目盛り・実績・累計記録）も検証する。
+あわせて「音が無い」「ダブルタップで拡大しない」「33タイプの絵が描ける」
+「ソシャゲ風のレアリティ表記が無い」も検証する。
 """
 import json
 import re
@@ -132,22 +133,6 @@ Object.defineProperty(Image.prototype, 'src', {
 });
 window.Image = Image;
 var navigator = { canShare: function(){ return false; }, share: function(){ return Promise.resolve(); } };
-var __audio = { contexts: 0, oscillators: 0, resumes: 0 };
-function AudioContextStub(){
-  this.state = 'suspended'; this.currentTime = 0; this.destination = {}; __audio.contexts++;
-  var self = this;
-  this.resume = function(){ self.state = 'running'; __audio.resumes++; };
-  this.createGain = function(){
-    return { gain: { value: 0, setValueAtTime: function(){}, exponentialRampToValueAtTime: function(){} }, connect: function(){} };
-  };
-  this.createOscillator = function(){
-    __audio.oscillators++;
-    return { type: 'sine',
-      frequency: { setValueAtTime: function(){}, exponentialRampToValueAtTime: function(){}, linearRampToValueAtTime: function(){} },
-      connect: function(){}, start: function(){}, stop: function(){} };
-  };
-}
-window.AudioContext = AudioContextStub;
 """
 
 failures = []
@@ -163,7 +148,7 @@ def check(cond, msg):
 def main():
     ctx = quickjs.Context()
     ctx.eval(DOM_STUB)
-    for f in JS_FILES + ["js/catcard.js", "js/sound.js", "js/app.js"]:
+    for f in JS_FILES + ["js/catcard.js", "js/app.js"]:
         ctx.eval((ROOT / f).read_text(encoding="utf-8"))
 
     # 要素IDが index.html と一致しているか
@@ -598,47 +583,25 @@ def main():
         print("[NG] シェアURLが不正")
         return 1
 
-    # --- 音のON/OFF（🔊/🔇） ---
-    print("\n--- 音（🔊/🔇） ---")
-    if not ctx.eval("CATSOUND.isOn()"):
-        print("[NG] 音が初期状態でONになっていない")
+    # --- 音は鳴らさない（ショボい電子音を消した） ---
+    print("\n--- 音を出さないこと ---")
+    if "soundBtn" in html or "soundIcon" in html or "sound.js" in html:
+        print("[NG] index.html に音のボタン/スクリプトが残っている")
         return 1
-    if ctx.eval("document.getElementById('soundIcon').textContent") != "🔊":
-        print("[NG] 音ボタンの初期アイコンが🔊でない")
+    no_snd = ctx.eval("""(function(){
+      var out = {};
+      out.catSound = typeof CATSOUND;
+      out.audio = typeof AudioContext;
+      out.osc = 0;
+      out.page = document.getElementById('app').innerHTML || '';
+      out.hasBtn = out.page.indexOf('soundBtn') >= 0;
+      return JSON.stringify(out);
+    })()""")
+    ns = json.loads(no_snd)
+    print(f"  CATSOUND={ns['catSound']} / AudioContext={ns['audio']} / 音ボタン={ns['hasBtn']}")
+    if ns["catSound"] != "undefined" or ns["hasBtn"]:
+        print("[NG] 音の仕組みが残っている")
         return 1
-    ctx.eval("__handlers['soundBtn:click'][0]()")
-    if ctx.eval("CATSOUND.isOn()"):
-        print("[NG] 音をOFFにできない")
-        return 1
-    if ctx.eval("document.getElementById('soundIcon').textContent") != "🔇":
-        print("[NG] 音OFFのアイコンが🔇でない")
-        return 1
-    if ctx.eval("localStorage.getItem('catgacha.sound.v1')") != "0":
-        print("[NG] 音OFFが保存されていない")
-        return 1
-    osc_off = ctx.eval("__audio.oscillators")
-    ctx.eval("CATSOUND.play('tap')")
-    if ctx.eval("__audio.oscillators") != osc_off:
-        print("[NG] 音OFFなのに音が鳴っている")
-        return 1
-    ctx.eval("__handlers['soundBtn:click'][0]()")
-    if not ctx.eval("CATSOUND.isOn()") or ctx.eval("document.getElementById('soundIcon').textContent") != "🔊":
-        print("[NG] 音をONに戻せない")
-        return 1
-    if ctx.eval("localStorage.getItem('catgacha.sound.v1')") != "1":
-        print("[NG] 音ONが保存されていない")
-        return 1
-    taps_osc = ctx.eval("__audio.oscillators")
-    ctx.eval("__handlers['catActor:click'][0]()")
-    if ctx.eval("__audio.oscillators") <= taps_osc:
-        print("[NG] 猫タップで音が鳴らない")
-        return 1
-    if ctx.eval("__audio.resumes") < 1:
-        print("[NG] ユーザー操作で AudioContext.resume() していない")
-        return 1
-    snd_osc, snd_res = ctx.eval("__audio.oscillators"), ctx.eval("__audio.resumes")
-    snd_saved = ctx.eval("localStorage.getItem('catgacha.sound.v1')")
-    print(f"  トグル OK / 出力 {snd_osc}音 / resume {snd_res}回 / 保存値 {snd_saved}")
 
     # --- 📸 猫生カード（フィナーレ） ---
     print("\n--- 📸 猫生カード ---")
@@ -697,8 +660,7 @@ def main():
           cls: document.getElementById('catStage').classList.contains('is-pinch'),
           alert: document.getElementById('stageAlert').textContent,
           hidden: document.getElementById('stageAlert').hidden,
-          stats: document.getElementById('stats').innerHTML,
-          osc: __audio.oscillators
+          stats: document.getElementById('stats').innerHTML
         };
         CATAPP.start(h.c); CATAPP.state.started = true; CATAPP.state.step = h.i; CATAPP.render();
         out.hungry = {
@@ -733,10 +695,98 @@ def main():
     if "幸運" not in pinch["lucky"]["alert"] or 'data-flag="幸運"' not in pinch["lucky"]["stats"]:
         print("[NG] 幸運の表示が出ない")
         return 1
-    if pinch["pinch"]["osc"] <= 0:
-        print("[NG] ピンチでアラート音が鳴らない")
+    print("  ピンチ演出・空腹サイン・幸運表示 OK")
+
+    # --- ダブルタップ／ピンチで拡大しない ---
+    print("\n--- 拡大しないこと ---")
+    vpm = re.search(r'<meta name="viewport" content="([^"]+)"', html)
+    vp = vpm.group(1) if vpm else ""
+    css = (ROOT / "css" / "style.css").read_text(encoding="utf-8")
+    need_vp = ["width=device-width", "maximum-scale=1.0", "user-scalable=no", "viewport-fit=cover"]
+    print("  viewport:", vp)
+    for token in need_vp:
+        if token not in vp:
+            print("[NG] viewport に", token, "が無い")
+            return 1
+    for token in ["touch-action: manipulation", "touch-action: pan-y", ".cat-actor", ".stage-wrap"]:
+        if token not in css:
+            print("[NG] CSS に", token, "が無い")
+            return 1
+    guard = ctx.eval("typeof CATAPP.zoomGuard === 'object' && typeof CATAPP.zoomGuard.install === 'function'")
+    if not guard:
+        print("[NG] ダブルタップ拡大のガードが無い")
         return 1
-    print("  ピンチ演出・空腹サイン・幸運表示・アラート音 OK")
+    print("  touch-action / ガード: OK")
+
+    # --- 新種の描画（33タイプすべてが正しい画像で描ける） ---
+    print("\n--- 新しい猫種の描画 ---")
+    types_html = ctx.eval("""(function(){
+      var out = {n: CATART.TYPES.length, bad: [], html: ''};
+      CATART.TYPES.forEach(function(t){
+        var p = CATART.imgPath(t, 'kitten');
+        var h = CATART.actorHTML({speciesName: t, speciesKey: 'breed:scottish', klass: 'domestic', pattern: {}}, {stage: 'kitten'});
+        if (p.indexOf('assets/cats/' + t + '-kitten.png') !== 0) out.bad.push(t + ':path');
+      });
+      var cases = [
+        ['breed:scottish','scottish'], ['breed:sphynx','sphynx'], ['breed:munchkin','munchkin'],
+        ['breed:persian','persian'], ['breed:american_curl','curl'], ['breed:russian_blue','russian'],
+        ['breed:bengal','bengal'], ['breed:abyssinian','abyssinian'], ['breed:mainecoon','mainecoon'],
+        ['breed:ragdoll','ragdoll'], ['breed:japanese_bobtail','bobtail'], ['breed:cornish_rex','rex']
+      ];
+      out.breed = cases.map(function(c){
+        var t = CATART.typeFor({klass:'domestic', speciesKey: c[0], pattern: {}});
+        return c[0] + '=' + t + (t === c[1] ? '' : '!');
+      });
+      out.wild = [
+        ['snow_leopard','snowleopard'], ['cheetah','cheetah'], ['manul','pallas'],
+        ['serval','serval'], ['caracal','caracal'], ['puma','puma'], ['bobcat','lynx']
+      ].map(function(c){
+        var t = CATART.typeFor({klass:'wild', species: {key: c[0]}});
+        return c[0] + '=' + t + (t === c[1] ? '' : '!');
+      });
+      return JSON.stringify(out);
+    })()""")
+    th = json.loads(types_html)
+    print("  タイプ数:", th["n"], "/ マッピング:", " ".join(th["breed"] + th["wild"]))
+    if th["n"] < 30:
+        print("[NG] イラストのタイプが30種未満")
+        return 1
+    if th["bad"]:
+        print("[NG] 画像パスが不正:", th["bad"][:5])
+        return 1
+    wrong = [x for x in th["breed"] + th["wild"] if x.endswith("!")]
+    if wrong:
+        print("[NG] 品種と絵の対応が違う:", wrong)
+        return 1
+
+    # --- ソシャゲ風のレアリティ表記が出ていないこと ---
+    print("\n--- レアリティ表記なし ---")
+    rarity_hit = ctx.eval("""(function(){
+      var c = CATAPP.state.current || CATGACHA.rollCat(11);
+      var texts = [CATAPP.buildResultHTML(c), CATAPP.buildFinaleHTML(c),
+                   CATAPP.nameplateHTML(c, 0), CATAPP.shareText(c)];
+      var dex = CATAPP.state.dex;
+      texts.push(CATAPP.buildDexHTML(dex, 'achievements', null));
+      texts.push(CATAPP.buildDexHTML(dex, 'albums', null));
+      var bad = [];
+      texts.forEach(function(t){
+        String(t || '').replace(/serif|sans|SRC/gi, '');
+        if (/class="[^"]*\brarity\b/.test(t)) bad.push('class=rarity');
+        if (/rare-jp|r-SSR|r-SR\b|r-UR|r-N\b|r-R\b/.test(t)) bad.push('rank-class');
+        ['ノーマル','スーパーレア','ウルトラレア','ダブルレア','最高レア'].forEach(function(w){
+          if (String(t).indexOf(w) >= 0) bad.push(w);
+        });
+      });
+      return JSON.stringify(bad);
+    })()""")
+    rh = json.loads(rarity_hit)
+    if rh:
+        print("[NG] レアリティ表記が残っている:", rh)
+        return 1
+    if re.search(r"rarity|RARITY|SSR|ウルトラレア", (ROOT / "js" / "app.js").read_text(encoding="utf-8")):
+        print("[NG] app.js にレアリティのコードが残っている")
+        return 1
+    print("  画面・カード・シェア文面に N/R/SR/SSR/UR なし OK")
 
     # --- 図鑑 ---
     ctx.eval("__handlers['openDex:click'][0]()")
@@ -1107,12 +1157,12 @@ def main():
     achcheck = json.loads(ctx.eval("""
       (function(){
         var base = {total: 1, speciesCount: 1, countryCount: 1, adoptCount: 0, maxAge: 1,
-          peak: {energy: 41, food: 42, luck: 43}, cat: {ageYears: 1, route: 'owned', mutations: [], rarity: 'N'}};
+          peak: {energy: 41, food: 42, luck: 43}, cat: {ageYears: 1, route: 'owned', mutations: [], probability: 1e-2}};
         var a = CATGACHA.evaluateAchievements(base);
         var b = CATGACHA.evaluateAchievements(Object.assign({}, base, {
           total: 100, speciesCount: 60, countryCount: 30, adoptCount: 6,
           peak: {energy: 90, food: 90, luck: 90},
-          cat: {ageYears: 100, route: 'street', mutations: [{key:'odd_eye'}], rarity: 'UR', bossCat: true, nekomata: true, maneki: true}
+          cat: {ageYears: 100, route: 'street', mutations: [{key:'odd_eye'}], probability: 1e-6, bossCat: true, nekomata: true, maneki: true}
         }));
         return JSON.stringify({defs: CATGACHA.ACHIEVEMENTS.length, a: a, b: b});
       })()
@@ -1135,13 +1185,14 @@ def main():
     ctx2.eval(DOM_STUB)
     legacy_dex = {
         "total": 2, "species": {"coat:kijitora": 2}, "countries": {"jp": 2}, "mutations": {},
-        "rarities": {"N": 2}, "maxAge": 12,
+        "rarities": {"N": 2}, "best": {"rarity": "SR", "name": "タマ", "species": "茶トラ", "probability": 2e-4},
+        "maxAge": 12,
         "history": [{"name": "タマ", "species": "茶トラ", "region": "日本", "rarity": "N", "age": 12,
                      "at": 1, "adopted": False, "boss": False, "nekomata": False, "maneki": False}],
         "ach": {"first": 1},
     }
     ctx2.eval("localStorage.setItem('catgacha.dex.v1', " + json.dumps(json.dumps(legacy_dex, ensure_ascii=False)) + ");")
-    for f in JS_FILES + ["js/catcard.js", "js/sound.js", "js/app.js"]:
+    for f in JS_FILES + ["js/catcard.js", "js/app.js"]:
         ctx2.eval((ROOT / f).read_text(encoding="utf-8"))
     ctx2.eval("CATAPP.state.tab='albums'; __handlers['openDex:click'][0]()")
     old_list = ctx2.eval("document.getElementById('dexBody').innerHTML")

@@ -688,19 +688,6 @@ body::before {
   letter-spacing: .1em;
 }
 
-.rarity {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .12em;
-  color: #fff;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--rc, #b9afa8);
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .35);
-}
 
 .page-art {
   position: relative;
@@ -840,16 +827,36 @@ body::before {
   border: 1.5px solid #ffe2c8;
 }
 .rare-head { display: flex; align-items: center; gap: 7px; }
-.rarity--big { font-size: 13px; padding: 5px 12px; letter-spacing: .14em; }
-.rare-jp { font-size: 11px; font-weight: 800; color: #a1703a; }
-.rare-tag {
-  margin-left: auto;
+/* 珍しさは、ランクではなく確率の言葉で */
+.rare-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: .02em;
+  color: #a1703a;
+  background: #fff6e4;
+  border: 1px solid #ffe2b4;
+  border-radius: 999px;
+  padding: 4px 11px;
+  white-space: nowrap;
+}
+.rare-word.tone-very { color: #9a5f8f; background: #fdf1fa; border-color: #f3d8ec; }
+.rare-word.tone-miracle { color: #a4562a; background: linear-gradient(100deg, #fff3d8, #ffe8f0); border-color: #ffd9a8; }
+.rare-card .rare-word { margin-top: 2px; }
+.rare-chip {
+  display: inline-flex;
+  align-items: center;
   font-size: 10px;
   font-weight: 800;
-  color: var(--pink-3);
-  background: #fff;
+  color: #a1703a;
+  background: #fff8ea;
+  border: 1px solid #ffe2b4;
   border-radius: 999px;
-  padding: 3px 9px;
+  padding: 2px 7px;
+  margin-left: 5px;
+  white-space: nowrap;
 }
 .rare-odds {
   margin: 9px 0 0;
@@ -1486,14 +1493,11 @@ body::before {
   font-size: 13px; font-weight: 800; letter-spacing: .01em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.album-name .rarity {
+.album-name .rare-word,
+.album-name .rare-chip {
   flex: 0 0 auto;
   font-size: 9px;
   padding: 1px 7px;
-  border-radius: 999px;
-  color: #fff;
-  background: var(--rc, #b9afa8);
-  letter-spacing: .04em;
 }
 .album-sub { font-size: 10.5px; font-weight: 700; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .album-line { font-size: 10.5px; font-weight: 700; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1628,18 +1632,6 @@ body::before {
 .cat-still.is-maneki .still-img { filter: drop-shadow(0 0 10px rgba(255, 200, 120, .5)) drop-shadow(0 8px 7px rgba(120, 60, 30, .16)); }
 .album-thumb .cat-still.is-thumb { transform: scale(.96); }
 
-/* ---------- レアリティ色 ---------- */
-.r-N { --rc: #b9afa8; }
-.r-R { --rc: #7fb6de; }
-.r-SR { --rc: #c0a3e6; }
-.r-SSR { --rc: #f0be5e; }
-.r-UR { --rc: #f2789a; }
-.rarity.r-UR {
-  background: linear-gradient(100deg, #ff9fb2, #ffd98e, #c0a3e6, #a8dcc9, #ff9fb2);
-  background-size: 300% 100%;
-  animation: rainbow 3.4s linear infinite;
-}
-@keyframes rainbow { to { background-position: 300% 0; } }
 
 /* ============================================================
    猫ステージ（背景・動く猫・ステータス）
@@ -2788,3 +2780,83 @@ body::before {
 .album-fav.is-on { background: linear-gradient(150deg, #ffe6a1, #ffc23c); border-color: #f0b020; color: #7c5410; }
 .album-card-btn { color: #a1703a; background: #fff8ea; border-color: #ffe2b4; }
 .album-x-btn { color: var(--pink-3); }
+
+/* ============================================================
+   ここから v2：拡大防止・猫らしいあしらい・珍しさの言葉
+   ============================================================ */
+
+/* --- ダブルタップ／ピンチで拡大させない --- */
+html, body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+button, a, .primary, .walk-btn, .tab, .dice-btn, .speed-btn, .auto-btn, .skip-btn,
+.dex-btn, .icon-btn, .choice-btn, .album-card, .album-star, .album-filter-btn,
+.dex-card, .ach-cell, .close-btn, .card-dl {
+  touch-action: manipulation;
+}
+/* 猫とステージの上では、指2本でも広げられない（縦スクロールだけ通す） */
+.cat-stage, .stage, .stage-wrap, .cat-actor, .cat-art, .cat-scale, .cat-img,
+.gacha-stage, .preview, .hero-img, .cat-still, .still-img, .choice-btn {
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.cat-img, .still-img, .hero-img { -webkit-touch-callout: none; }
+
+/* --- ステージの枠を「猫の頭」に（上辺の左右に猫耳） --- */
+.stage-wrap { position: relative; }
+.stage-wrap::before,
+.stage-wrap::after {
+  content: "";
+  position: absolute;
+  top: -13px;
+  width: 50px;
+  height: 38px;
+  z-index: 3;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  background: linear-gradient(180deg, #ffc2d1 0%, #ffdfd0 52%, #fffdf8 100%);
+  filter: drop-shadow(0 -2px 3px rgba(198, 141, 120, .20));
+  pointer-events: none;
+}
+.stage-wrap::before { left: 16px; transform: rotate(-5deg); }
+.stage-wrap::after { right: 16px; transform: rotate(5deg); }
+
+/* --- 肉球の透かし（珍しさカード・過去の猫生のサムネイル） --- */
+.rare-card::after {
+  content: "🐾";
+  position: absolute;
+  right: 10px;
+  bottom: 4px;
+  font-size: 26px;
+  opacity: .16;
+  pointer-events: none;
+}
+.album-thumb { position: relative; }
+.album-thumb::after {
+  content: "🐾";
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-size: 14px;
+  opacity: .22;
+  pointer-events: none;
+}
+
+/* --- ひげ（この子はこんな猫カードの右上） --- */
+.who-card { position: relative; }
+.who-card::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  width: 30px;
+  height: 18px;
+  background:
+    linear-gradient(8deg, transparent 46%, #e8cfc2 46% 54%, transparent 54%) 0 0 / 100% 6px no-repeat,
+    linear-gradient(-4deg, transparent 46%, #e8cfc2 46% 54%, transparent 54%) 0 6px / 100% 6px no-repeat,
+    linear-gradient(16deg, transparent 46%, #e8cfc2 46% 54%, transparent 54%) 0 12px / 100% 6px no-repeat;
+  opacity: .85;
+  pointer-events: none;
+}

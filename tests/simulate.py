@@ -1,7 +1,7 @@
 """世界猫生ガチャ — 検証スクリプト
 1) 10,000回の抽選シミュレーション（例外・分布・寿命・整合性）
 2) 猫生ストーリー（寿命に応じた歩数・季節・2択・拾われる）の検査
-3) 全アセット（13タイプ×子猫/成猫のPNG）とマッピング網羅性のチェック
+3) 全アセット（33タイプ×子猫/成猫のPNG）・首輪フィット・マッピング網羅性のチェック
 4) データ網羅性のチェック（純血種・野生ネコ科・国）
 5) 誕生画面の珍しさ表示・常時名札（境遇更新）の検査
 
@@ -24,7 +24,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 JS_FILES = [
     "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js", "js/events.js",
-    "js/data.js", "js/engine.js", "js/catart.js", "js/catcard.js", "js/sound.js", "js/app.js",
+    "js/data.js", "js/engine.js", "js/catart.js", "js/catcard.js", "js/app.js",
 ]
 N = 10000
 SEED = 20261123
@@ -78,7 +78,7 @@ def run(ctx):
       var fin = CATAPP.buildFinaleHTML(c);
       var s0 = CATART.statsFor(c, 0);
       var sLast = CATART.statsFor(c, story.length - 1);
-      var pts = CATGACHA.rarityPoints(c);
+      var pts = CATGACHA.rareNotes(c);
       var np0 = CATAPP.nameplateHTML(c, 0);
       var npLast = CATAPP.nameplateHTML(c, story.length - 1);
       var st0 = CATGACHA.statusOf(c, 0);
@@ -92,7 +92,7 @@ def run(ctx):
       out.cats.push({
         klass: c.klass, route: c.route, country: c.region.bucket, regionName: c.region.name,
         speciesKey: c.speciesKey, speciesName: c.speciesName, speciesGroup: c.speciesGroup || null,
-        status: c.statusLabel, age: c.ageYears, rarity: c.rarity, prob: c.probability,
+        status: c.statusLabel, age: c.ageYears, tier: c.rarityTier, prob: c.probability,
         pop: c.population, sex: c.sex, mutations: c.mutations.map(function(m){return m.key;}),
         special: c.special ? c.special.key : null,
         iucn: c.species && c.species.iucn ? c.species.iucn : null,
@@ -238,7 +238,7 @@ def main():
         print("   last:", data.get("lastError", "")[:400])
     check(not data["assetErrors"], f"アセットHTMLの崩れ {len(data['assetErrors'])} 件")
 
-    # ---- 画像アセット（13タイプ×子猫/成猫） ----
+    # ---- 画像アセット（33タイプ×子猫/成猫） ----
     print("\n--- 画像アセット ---")
     types = meta["types"]
     print(f"  タイプ {len(types)} 種: {' / '.join(types)}")
@@ -253,18 +253,19 @@ def main():
                 total_bytes += p.stat().st_size
     print(f"  画像ファイル: {len(types) * 2 - len(missing_assets)}/{len(types) * 2} 枚 / 合計 {total_bytes/1024/1024:.2f}MB")
     check(not missing_assets, f"画像アセットが欠けている: {missing_assets}")
-    # 1回の猫生で読み込むのは 2枚（子猫+成猫）だけ。総量は6MB、1枚300KB以内を上限とする
-    check(total_bytes < 6 * 1024 * 1024, "画像アセットが重すぎる（合計6MB超）")
+    # 1回の猫生で読み込むのは 2枚（子猫+成猫）だけ。総量は16MB、1枚420KB以内を上限とする
+    check(len(types) >= 30, f"イラストのタイプが30種未満: {len(types)}")
+    check(total_bytes < 16 * 1024 * 1024, "画像アセットが重すぎる（合計16MB超）")
     heavy = [f"{t}-{st}" for t in types for st in ("kitten", "adult")
              if (ROOT / "assets" / "cats" / f"{t}-{st}.png").exists()
-             and (ROOT / "assets" / "cats" / f"{t}-{st}.png").stat().st_size > 300 * 1024]
+             and (ROOT / "assets" / "cats" / f"{t}-{st}.png").stat().st_size > 420 * 1024]
     check(not heavy, f"1枚が重すぎるPNG: {heavy}")
 
     # ---- 透過の検査（「透明な猫」バグの再発防止） ----
     sys.path.insert(0, str(ROOT / "tools"))
     import check_assets  # noqa: E402
     print("\n--- 透過の検査 ---")
-    print("  全26枚: 512x512 RGBA / 体の内側に抜けは無いか / 内側は alpha=255 か")
+    print(f"  全{len(types) * 2}枚: 512x512 RGBA / 体の内側に抜けは無いか / 内側は alpha=255 か")
     bad_alpha = []
     covers = []
     for p in check_assets.expected_files(str(ROOT)):
@@ -275,7 +276,7 @@ def main():
     print(f"  不透明部分の割合: 最小 {min(covers):.2f} / 最大 {max(covers):.2f}")
     check(not bad_alpha, f"透過/サイズの異常: {bad_alpha}")
 
-    # ---- 首輪の位置（全26枚で首元に乗っているか） ----
+    # ---- 首輪の位置（全66枚で首元にピタッと乗っているか） ----
     print("\n--- 首輪の位置 ---")
     collar = json.loads(ctx.eval("JSON.stringify(CATART.COLLAR)"))
     keys = [f"{t}-{st}" for t in types for st in ("kitten", "adult")]
@@ -306,6 +307,48 @@ def main():
                 band_off.append(f"{k}:{name}")
     print(f"  帯の左右端・中央・鈴が猫の体の上にある: {'OK' if not band_off else 'NG'}")
     check(not band_off, f"首輪が体から外れている: {band_off}")
+
+    # 「ガバガバ」の再発防止：帯の見えている横幅が、その高さの首の幅にほぼ一致しているか。
+    # 毛の長い猫は毛先で輪郭がギザギザになるので、首の幅は tools/collar_map.py と同じ
+    # 中央値スムージングで測る（＝人が見た「体の幅」）。
+    import collar_map as CM  # noqa: E402
+
+    def neck_width_at(alpha, row):
+        m = alpha >= 128
+        Hh = alpha.shape[0]
+        ys, _ = np.where(m)
+        t, b = int(ys.min()), int(ys.max())
+        span = b - t + 1
+        widths = np.array([0.0 if not np.any(m[y]) else float(np.where(m[y])[0].max() - np.where(m[y])[0].min() + 1)
+                           for y in range(t, b + 1)], dtype=float)
+        sw = CM.smooth(widths, max(5, int(span * 0.025) | 1))
+        i = max(0, min(len(sw) - 1, int(row) - t))
+        return float(sw[i])
+
+    fit_bad = []
+    fits = []
+    for k in keys:
+        c = collar.get(k)
+        if not c:
+            continue
+        alpha = np.asarray(Image.open(ROOT / "assets" / "cats" / f"{k}.png").convert("RGBA"))[:, :, 3]
+        H, W = alpha.shape
+        w = c["w"] / 100 * W
+        cy = c["y"] / 100 * H
+        y_end = int(round(cy - 0.117 * w))          # 帯の左右の端が乗る行
+        y_end = max(0, min(H - 1, y_end))
+        neck_w = neck_width_at(alpha, y_end)
+        if not neck_w:
+            fit_bad.append(f"{k}:空の行")
+            continue
+        ratio = (0.99 * w) / neck_w
+        fits.append(ratio)
+        if not (0.35 <= ratio <= 1.06):
+            fit_bad.append(f"{k}:{ratio:.2f}")
+    # 毛の長い猫（ペルシャ・マヌル・ふわふわ）は輪郭が頭と体でつながるので、
+    # 実測より細い目の値になる。基準は「体からはみ出さない上限1.06」と「細すぎない下限0.35」。
+    print(f"  帯の幅 / 首の幅: 最小 {min(fits):.3f} / 平均 {sum(fits)/len(fits):.3f} / 最大 {max(fits):.3f}（基準 0.35〜1.06）")
+    check(not fit_bad, f"首輪が首に合っていない（ガバガバ/きつすぎ）: {fit_bad}")
     sample_actor = ctx.eval("(function(){var c=CATGACHA.rollCat(1); return CATART.actorHTML(c,{stage:'kitten'});})()")
     check("--collar-x:" in sample_actor and "--collar-w:" in sample_actor,
           "アクターHTMLに首輪の座標変数が入っていない")
@@ -402,11 +445,15 @@ def main():
         print(f"  日本飼い猫 平均 {sum(jp_owned)/len(jp_owned):.2f}歳（実統計 約16歳）")
         check(13.0 <= sum(jp_owned) / len(jp_owned) <= 18.0, "日本飼い猫の平均寿命が実統計から外れすぎ")
 
-    # ---- レアリティ ----
-    print("\n--- レアリティ ---")
-    for k, v in Counter(c["rarity"] for c in cats).most_common():
-        print(f"  {k:4s} {v:5d} ({pct(v, n)})")
-    check(len(set(c["rarity"] for c in cats)) >= 4, "レアリティのばらつきが不足")
+    # ---- 珍しさ（ソシャゲのランクは出さない。内部の段階と確率だけ） ----
+    print("\n--- 珍しさ（内部の段階・表示は確率の言葉） ---")
+    for k, v in sorted(Counter(c["tier"] for c in cats).items()):
+        print(f"  段階{k} {v:5d} ({pct(v, n)})")
+    check(len(set(c["tier"] for c in cats)) >= 4, "珍しさの段階にばらかしが無い")
+    words = ctx.eval("JSON.stringify([CATGACHA.rareWord(1e-6).text, CATGACHA.rareWord(5e-5).text, CATGACHA.rareWord(5e-4).text, String(CATGACHA.rareWord(0.02))])")
+    wl = json.loads(words)
+    print(f"  言葉: {' / '.join(wl[:3])} / ありふれた猫={wl[3]}")
+    check(all("✨" in w for w in wl[:3]) and wl[3] == "null", "珍しさの言葉が確率に応じて変わらない")
 
     # ---- 猫生ストーリー（体験型UIの中身） ----
     print("\n--- 猫生ストーリー ---")
@@ -621,16 +668,16 @@ def main():
         var dup = keys.filter(function(k, i){ return keys.indexOf(k) !== i; });
         var bad = CATGACHA.ACHIEVEMENTS.filter(function(a){ return !a.icon || !a.name || !a.desc || !a.tone; }).map(function(a){ return a.key; });
         var base = {total: 1, speciesCount: 1, countryCount: 1, adoptCount: 0, maxAge: 1,
-          peak: {energy: 40, food: 40, luck: 40}, cat: {ageYears: 1, route: 'owned', mutations: [], rarity: 'N'}};
+          peak: {energy: 40, food: 40, luck: 40}, cat: {ageYears: 1, route: 'owned', mutations: [], probability: 1e-2}};
         var early = CATGACHA.evaluateAchievements(base);
         var great = CATGACHA.evaluateAchievements({total: 100, speciesCount: 60, countryCount: 30, adoptCount: 6,
           maxAge: 100, peak: {energy: 90, food: 90, luck: 90},
-          cat: {ageYears: 100, route: 'street', mutations: [{key: 'odd_eye'}, {key: 'male_calico'}], rarity: 'UR',
+          cat: {ageYears: 100, route: 'street', mutations: [{key: 'odd_eye'}, {key: 'male_calico'}], probability: 1e-6,
                 bossCat: true, nekomata: true, maneki: true, klass: 'domestic', speciesGroup: 'big', adopted: true, shelterBorn: true}});
         var free = CATGACHA.evaluateAchievements({total: 20, speciesCount: 10, countryCount: 8, adoptCount: 1, maxAge: 12,
-          peak: {energy: 60, food: 60, luck: 60}, cat: {ageYears: 12, route: 'street', mutations: [], rarity: 'R', adopted: false}});
+          peak: {energy: 60, food: 60, luck: 60}, cat: {ageYears: 12, route: 'street', mutations: [], probability: 1e-4, adopted: false}});
         var pinch = CATGACHA.evaluateAchievements({total: 2, speciesCount: 2, countryCount: 2, adoptCount: 0, maxAge: 4,
-          peak: {energy: 50, food: 50, luck: 50}, cat: {ageYears: 4, route: 'owned', mutations: [], rarity: 'N', pinchAvoided: true}});
+          peak: {energy: 50, food: 50, luck: 50}, cat: {ageYears: 4, route: 'owned', mutations: [], probability: 1e-2, pinchAvoided: true}});
         return JSON.stringify({n: keys.length, dup: dup, bad: bad, early: early, great: great, pinch: pinch, free: free});
       })()
     """))
@@ -679,7 +726,7 @@ def main():
 
     print("\n--- レア引例 (確率が低い順) ---")
     for c in sorted(cats, key=lambda x: x["prob"])[:6]:
-        print(f"  {c['rarity']:3s} {c['speciesName']} / {c['regionName']} / {c['ageLabel']} / "
+        print(f"  段階{c['tier']} {c['speciesName']} / {c['regionName']} / {c['ageLabel']} / "
               f"母数 {c['pop']:.1f} / 確率 {c['prob']*100:.6f}%")
 
     # ---- 過去の猫生（図鑑のフル記録） ----
@@ -714,7 +761,7 @@ def main():
         out.listHasBack = out.listHtml.indexOf('album-back') >= 0;
         /* 全記録を検証（プロフィール・ログ・詳細HTML） */
         var needKeys = ['id','at','name','region','speciesName','kind','pattern','gender','eyeColor',
-          'rarity','probability','ageYears','deathReason','adopted','bossCat','nekomata','maneki',
+          'probability','ageYears','deathReason','adopted','bossCat','nekomata','maneki',
           'finalStage','stats','art','logs'];
         dex.albums.forEach(function(rec, ri){
           needKeys.forEach(function(k){ if (!(k in rec)) out.bad.push('missing:' + k + '@' + ri); });
@@ -1033,21 +1080,29 @@ def main():
     check(card["sampleImages"] > 0, "カードに猫の画像が描かれていない")
     check(card["noAge"] == 0 and card["noOdds"] == 0, "カードに享年/珍しさの欠けた猫がいる")
 
-    # ---- 音（Web Audio シンセ） ----
-    print("\n--- 音（Web Audio） ---")
+    # ---- 音は鳴らさない（ショボい電子音より無音のほうがクオリティが保てる） ----
+    print("\n--- 音を出さないこと ---")
     snd = json.loads(ctx.eval(r"""
       (function(){
-        var out = {on: CATSOUND.isOn(), playNoAudio: null, threw: false};
-        try { out.playNoAudio = CATSOUND.play('tap'); } catch (e) { out.threw = true; }
-        out.all = Object.keys(CATSOUND.SOUNDS);
+        var out = {hasSound: typeof CATSOUND, hasAudio: typeof AudioContext};
+        var c = CATGACHA.rollCat(7);
+        var all = [CATART.actorHTML(c,{stage:'kitten'}), CATART.actorHTML(c,{stage:'adult'}),
+                   CATAPP.buildResultHTML(c), CATAPP.buildFinaleHTML(c)];
+        out.htmlSound = all.some(function(h){
+          return /soundBtn|soundIcon|CATSOUND|AudioContext|new Audio|\\uD83D\\uDD0A|\\uD83D\\uDD07/.test(h);
+        });
         return JSON.stringify(out);
       })()
     """))
-    print(f"  初期ON={snd['on']} / AudioContextなしでも例外なし={not snd['threw']} / 音の種類 {len(snd['all'])}: {' '.join(snd['all'])}")
-    check(snd["on"], "音の初期設定がOFFになっている")
-    check(not snd["threw"], "AudioContextが無い環境で例外が出る")
-    for need in ("roll", "birth", "tap", "choice", "adopt", "milestone", "pinch", "death", "card"):
-        check(need in snd["all"], f"音の種類が足りない: {need}")
+    print(f"  CATSOUND={snd['hasSound']} / AudioContext={snd['hasAudio']} / 画面に音の要素={snd['htmlSound']}")
+    check(snd["hasSound"] == "undefined", "音のモジュールがまだ読み込まれている")
+    check(not snd["htmlSound"], "画面のHTMLに音のボタン・スピーカーが出ている")
+    index_html = (ROOT / "index.html").read_text(encoding="utf-8")
+    check("soundBtn" not in index_html and "sound.js" not in index_html,
+          "index.html に音のボタン/スクリプトが残っている")
+    check(not (ROOT / "js" / "sound.js").exists(), "js/sound.js が残っている")
+    check("touch-action" in (ROOT / "css" / "style.css").read_text(encoding="utf-8"),
+          "CSSに touch-action の指定が無い")
 
     # ---- 旧セーブデータ互換（albums / logs が無くても動く） ----
     print("\n--- 旧セーブデータ互換 ---")
@@ -1055,6 +1110,7 @@ def main():
       (function(){
         var old = {total: 2, species: {'coat:kijitora': 2}, countries: {jp: 2}, mutations: {},
           rarities: {N: 2}, maxAge: 12,
+          best: {rarity: 'SR', name: 'タマ', species: '茶トラ', probability: 2e-4, at: 1},
           history: [{name: 'タマ', species: '茶トラ', region: '日本', rarity: 'N', age: 12, at: 1, adopted: false}]};
         localStorage = { _v: {}, getItem: function(k){ return this._v[k] || null; },
           setItem: function(k, v){ this._v[k] = v; } };
@@ -1066,7 +1122,7 @@ def main():
         out.listEmpty = out.listHtml.indexOf('まだ過去の猫生はありません') >= 0;
         /* logs の無い古い記録でも詳細が壊れない */
         var bare = {id: 'old1', at: 1, name: 'ミケ', speciesName: '三毛', region: {flag: '🇯🇵', name: '日本'},
-          kind: '雑種', rarity: 'R', ageYears: 5, probability: 1e-5, population: 12000,
+          kind: '雑種', ageYears: 5, probability: 1e-5, population: 12000,
           art: {type: 'calico', stage: 'adult'}};
         var dh = CATAPP.albumDetailHTML(bare);
         out.bareHtml = dh;

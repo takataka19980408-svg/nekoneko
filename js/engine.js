@@ -352,7 +352,7 @@
 
     cat.population = Math.max(cat.population, 0.6);
     cat.probability = cat.population / D.TOTAL;
-    cat.rarity = rarityOf(cat);
+    cat.rarityTier = tierOf(cat);
     cat.ageLabel = ageLabel(cat.ageYears);
     cat.birthMonth = Math.floor(rng() * 12);
     cat.bornPlace = cat.klass === 'wild'
@@ -365,22 +365,31 @@
       species: cat.speciesKey,
       country: cat.region.bucket,
       mutation: cat.mutations.map(m => m.key),
-      rarity: cat.rarity,
       klass: cat.klass
     };
     return cat;
   }
 
-  /* ---------- レアリティ ---------- */
-  const RARITY_ORDER = ['N', 'R', 'SR', 'SSR', 'UR'];
-  function rarityOf(cat) {
+  /* ---------- 珍しさ（表示には使わない。実績と並びの内部判定だけ） ---------- */
+  function tierOf(cat) {
     const pop = cat.population;
     let i = pop >= 400000 ? 0 : pop >= 40000 ? 1 : pop >= 3000 ? 2 : pop >= 300 ? 3 : 4;
     if (cat.klass === 'wild') i = Math.max(i, 1);
     if (cat.speciesGroup === 'big' || cat.speciesGroup === 'island') i = Math.max(i, 2);
     if (cat.mutations && cat.mutations.some(m => !m.cosmetic)) i = Math.max(i, 2);
     if (cat.special) i = Math.max(i, 3);
-    return RARITY_ORDER[i];
+    return i;
+  }
+
+  /* ソシャゲのランクではなく、確率そのものを言葉にする。
+     0.01%以下＝奇跡みたいな出会い / 0.1%以下＝とても珍しい猫 / 1%以下＝めずらしい猫 */
+  function rareWord(prob) {
+    const p = Number(prob) || 0;
+    if (!p) return null;
+    if (p <= 0.00001) return { tone: 'miracle', text: '✨ 奇跡みたいな出会い' };
+    if (p <= 0.0001) return { tone: 'very', text: '✨ とても珍しい猫' };
+    if (p <= 0.001) return { tone: 'rare', text: '✨ めずらしい猫' };
+    return null;
   }
 
   /* ---------- 表記 ---------- */
@@ -476,7 +485,7 @@
   }
 
   /* ---------- 珍しさアピール（誕生画面の豆知識） ---------- */
-  function rarityPoints(cat) {
+  function rareNotes(cat) {
     const out = [];
     if (!cat) return out;
     const sp = cat.species || null;
@@ -489,7 +498,7 @@
           + (sp.iucn ? 'IUCNレッドリスト ' + sp.iucn + '（' + (IUCN_JP[sp.iucn] || '') + '）。' : ''));
       }
       if (cat.speciesGroup === 'big' || cat.speciesGroup === 'island') {
-        out.push('🦁 大型・島のネコ科は図鑑でも最上位クラス。出会えたら自慢できる。');
+        out.push('🦁 大型・島のネコ科は、そう何度も出会えない。会えたら自慢できる。');
       }
       if (cat.route === 'zoo') out.push('🎪 動物園生まれ。ガラスの向こうから、毎日誰かが見ている一生。');
     } else if (cat.route === 'purebred') {
@@ -1382,8 +1391,8 @@
     { key: 'bigCat', icon: '🦁', name: '大型ネコ科', desc: 'ライオンやトラに生まれた', tone: 'gold' },
     { key: 'zooStar', icon: '🎪', name: '動物園のスター', desc: '動物園生まれの一生を生きた', tone: 'silver' },
     { key: 'pure', icon: '📜', name: '血統の誇り', desc: '血統書つきの純血種に生まれた', tone: 'silver' },
-    { key: 'rare', icon: '💎', name: '奇跡のレア', desc: 'SSR以上を引いた', tone: 'gold' },
-    { key: 'ur', icon: '🌈', name: '神引き', desc: 'URを引いた', tone: 'rainbow' },
+    { key: 'rare', icon: '💎', name: 'めずらしい出会い', desc: '1,000匹に1匹より珍しい猫を引いた', tone: 'gold' },
+    { key: 'ur', icon: '🌈', name: '奇跡みたいな出会い', desc: '10万匹に1匹より珍しい猫を引いた', tone: 'rainbow' },
     { key: 'all80', icon: '💪', name: 'ステータス全80以上', desc: '❤️🐟🍀がそろって80を超えた', tone: 'gold' },
     { key: 'dex25', icon: '📖', name: '図鑑25種', desc: '25種類の猫を図鑑に載せた', tone: 'silver' },
     { key: 'dex50', icon: '📚', name: '図鑑50種', desc: '50種類の猫を図鑑に載せた', tone: 'gold' },
@@ -1427,8 +1436,9 @@
     add('bigCat', cat.speciesGroup === 'big');
     add('zooStar', route === 'zoo');
     add('pure', route === 'purebred');
-    add('rare', cat.rarity === 'SSR' || cat.rarity === 'UR');
-    add('ur', cat.rarity === 'UR');
+    const prob = Number(cat.probability) || 0;
+    add('rare', prob > 0 && prob <= 0.001);
+    add('ur', prob > 0 && prob <= 0.00001);
     add('all80', peak.energy >= 80 && peak.food >= 80 && peak.luck >= 80);
     add('dex25', (c.speciesCount || 0) >= 25);
     add('dex50', (c.speciesCount || 0) >= 50);
@@ -1936,7 +1946,7 @@
         .concat(D.WILD.map(w => ({ key: 'wild:' + w.key, name: w.name, group: 'wild' }))),
       countries: D.COUNTRIES.map(c => ({ key: c.key, name: c.name, flag: c.flag })),
       mutations: D.MUTATIONS.map(m => ({ key: m.key, name: m.name, note: m.note })),
-      rarities: RARITY_ORDER
+      tiers: 5
     };
   }
 
@@ -1945,8 +1955,8 @@
     stageForAge, storyStepCount, STAGES, STAGE_LABEL, STEP_TABLE,
     ageLabelFine, SEASONS, SEASON_LABEL, seasonOfAge, seasonFor, seasonLabel, seasonEmoji,
     formatCount, formatProb, formatOneIn, ageText, ageLabel,
-    rarityOf, dexCatalog, RARITY_ORDER, deathOf, buildCaption,
-    statusOf, rarityPoints, bossAt, STATUS_VIEW, IUCN_JP,
+    tierOf, rareWord, dexCatalog, deathOf, buildCaption,
+    statusOf, rareNotes, bossAt, STATUS_VIEW, IUCN_JP,
     /* 年をとる・分岐・やり込み */
     AGE_TICKS, NEKOMATA_TICKS, ageTicks, ageScalePercent, MILESTONES, milestoneAt, milestonesPassed,
     statsAt, peakStats, baseStats, statChips, FATE, fateAt, fateRiskFactor, hungerRatio, hungerToll,

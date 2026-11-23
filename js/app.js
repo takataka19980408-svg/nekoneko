@@ -9,10 +9,8 @@
   const D = root.CATGACHA_DATA;
   const E = root.CATGACHA;
   const A = root.CATART;
-  const SND = root.CATSOUND || { play: function () { return false; }, isOn: function () { return false; }, setOn: function () { return false; }, toggle: function () { return false; }, ensure: function () { return null; } };
   const KEY = 'catgacha.dex.v1';
 
-  const RARITY_JP = { N: 'ノーマル', R: 'レア', SR: 'スーパーレア', SSR: 'ダブルレア', UR: 'ウルトラレア' };
   const STAGE_JP = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
 
   /* 過去の猫生（フル記録）の保持数。1匹あたり数〜20KBなので、40匹で数100KBに収まる。
@@ -25,11 +23,52 @@
     nekomata: '猫又', maneki: '看板猫'
   };
 
+  /* ---------- ダブルタップ拡大の抑止（iOS Safari 対策） ----------
+     viewport の user-scalable=no は iOS 10 以降ほぼ無視されるので、
+     300ms以内の2回目のタップだけ default を止め、代わりの click を
+     1回だけ送る（＝連打しても「2回タップした」ことにはするが、
+     画面は絶対に拡大しない）。ピンチの gesture 系も止める。 */
+  const ZOOM_GUARD = (function () {
+    let last = 0, lx = 0, ly = 0, busy = false;
+    function install(doc) {
+      if (!doc || !doc.addEventListener || busy) return;
+      busy = true;
+      doc.addEventListener('touchend', function (ev) {
+        const ts = ev && ev.changedTouches;
+        if (!ts || ts.length !== 1) return;
+        const t = ts[0];
+        const now = (typeof Date !== 'undefined' && Date.now) ? Date.now() : 0;
+        if (last && now - last < 320 && Math.abs(t.clientX - lx) < 40 && Math.abs(t.clientY - ly) < 40) {
+          if (ev.cancelable) ev.preventDefault();
+          last = 0;
+          const el = (t.target && t.target.nodeType === 1) ? t.target : (ev.target || null);
+          if (el && el.dispatchEvent) {
+            try {
+              const CE = el.ownerDocument && el.ownerDocument.defaultView && el.ownerDocument.defaultView.MouseEvent;
+              el.dispatchEvent(new (CE || MouseEvent)('click', { bubbles: true, cancelable: true, view: el.ownerDocument.defaultView }));
+            } catch (e) { /* click を送れない環境でも拡大させない方を優先 */ }
+          }
+          return;
+        }
+        last = now; lx = t.clientX; ly = t.clientY;
+      }, { passive: false });
+      doc.addEventListener('dblclick', function (ev) {
+        if (ev && ev.cancelable) ev.preventDefault();
+      }, { passive: false });
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+        doc.addEventListener(name, function (ev) {
+          if (ev && ev.cancelable) ev.preventDefault();
+        }, { passive: false });
+      });
+    }
+    return { install: install, reset: function () { last = 0; } };
+  })();
+
   /* ---------- 図鑑データ ---------- */
   function emptyDex() {
     return {
-      total: 0, species: {}, countries: {}, mutations: {}, rarities: {},
-      maxAge: 0, best: null, rarest: null, history: [], albums: [],
+      total: 0, species: {}, countries: {}, mutations: {},
+      maxAge: 0, rarest: null, history: [], albums: [],
       adopted: 0, bossCount: 0, nekomata: 0, maneki: 0,
       ach: {}, longest: null
     };
@@ -44,6 +83,18 @@
       if (!Array.isArray(dex.albums)) dex.albums = [];
       if (!Array.isArray(dex.history)) dex.history = [];
       dex.albums = dex.albums.filter(a => a && typeof a === 'object');
+      /* 旧セーブのレアリティ表記（rarities / best）は読み捨てる。
+         代わりに「いちばん珍しい猫」を rarest に引き継ぐ。 */
+      delete dex.rarities;
+      if (dex.best) {
+        if (!dex.rarest && dex.best.probability) {
+          dex.rarest = {
+            probability: dex.best.probability,
+            name: dex.best.name, species: dex.best.species, at: dex.best.at || 0
+          };
+        }
+        delete dex.best;
+      }
       return dex;
     } catch (e) { return emptyDex(); }
   }
@@ -217,7 +268,6 @@
       gender: (D.SEX_LABEL && D.SEX_LABEL[cat.sex]) || '',
       eyeColor: eyeText(cat),
       eyeHex: cat.eyeColor || '',
-      rarity: cat.rarity || 'N',
       probability: cat.probability || 0,
       population: cat.population || 0,
       ageYears: Number(cat.ageYears) || 0,
@@ -246,7 +296,6 @@
     dex.species[cat.speciesKey] = (dex.species[cat.speciesKey] || 0) + 1;
     dex.countries[cat.region.bucket] = (dex.countries[cat.region.bucket] || 0) + 1;
     cat.mutations.forEach(m => { dex.mutations[m.key] = (dex.mutations[m.key] || 0) + 1; });
-    dex.rarities[cat.rarity] = (dex.rarities[cat.rarity] || 0) + 1;
     dex.maxAge = Math.max(dex.maxAge || 0, cat.ageYears);
     if (!dex.longest || cat.ageYears > dex.longest.age) {
       dex.longest = { age: cat.ageYears, name: cat.name, species: cat.speciesName };
@@ -255,16 +304,12 @@
     if (cat.bossCat) dex.bossCount = (dex.bossCount || 0) + 1;
     if (cat.nekomata) dex.nekomata = (dex.nekomata || 0) + 1;
     if (cat.maneki) dex.maneki = (dex.maneki || 0) + 1;
-    const rank = E.RARITY_ORDER.indexOf(cat.rarity);
-    if (!dex.best || rank > E.RARITY_ORDER.indexOf(dex.best.rarity)) {
-      dex.best = { rarity: cat.rarity, name: cat.name, species: cat.speciesName, at: Date.now() };
-    }
     if (!dex.rarest || cat.probability < dex.rarest.probability) {
       dex.rarest = { probability: cat.probability, name: cat.name, species: cat.speciesName, popularity: cat.population, at: Date.now() };
     }
     dex.history.unshift({
       name: cat.name, species: cat.speciesName, region: cat.region.name,
-      rarity: cat.rarity, age: cat.ageYears, at: Date.now(),
+      age: cat.ageYears, at: Date.now(),
       adopted: !!cat.adopted, boss: !!cat.bossCat, nekomata: !!cat.nekomata, maneki: !!cat.maneki
     });
     dex.history = dex.history.slice(0, 12);
@@ -363,15 +408,29 @@
     </div>`;
   }
 
+  /* 過去の猫生のチップ：ソシャゲのランクではなく「めずらしい」＋確率 */
+  function albumRareChip(rec) {
+    const w = E.rareWord(rec && rec.probability);
+    if (w) return `<span class="rare-word tone-${w.tone}">${w.text}</span>`;
+    return rec && rec.probability ? `<span class="rare-chip">${E.formatOneIn(rec.probability)}</span>` : '';
+  }
+
+  /* 図鑑：いちばん珍しい猫（確率が最小の子） */
+  function rarestText(dex) {
+    const r = dex && dex.rarest;
+    if (!r || !r.probability) return '—';
+    return `${E.formatOneIn(r.probability)}${r.species ? '・' + r.species : ''}`;
+  }
+
   /* 誕生画面：どれだけ珍しいか */
   function rareCardHTML(cat) {
-    const points = E.rarityPoints(cat);
+    const points = E.rareNotes(cat);
+    const word = E.rareWord(cat.probability);
+    const head = word
+      ? `<div class="rare-head"><span class="rare-word tone-${word.tone}">${word.text}</span></div>`
+      : '';
     return `<div class="rare-card">
-      <div class="rare-head">
-        <span class="rarity rarity--big r-${cat.rarity}">${cat.rarity}</span>
-        <span class="rare-jp">${RARITY_JP[cat.rarity]}</span>
-        <span class="rare-tag">✨ 珍しさ</span>
-      </div>
+      ${head}
       <p class="rare-odds">地球約10億匹中の <b>${E.formatOneIn(cat.probability)}</b><span class="rare-pct">（${E.formatProb(cat.probability)}）</span><span class="rare-sep">｜</span>仲間は <b>${E.formatCount(cat.population)}</b></p>
       <p class="rare-points-title">✨ 珍しいポイント・豆知識</p>
       <ul class="rare-points">${points.map(t => `<li>${t}</li>`).join('')}</ul>
@@ -563,7 +622,7 @@
 
   function shareText(cat) {
     const lines = [
-      `【世界猫生ガチャ】${cat.rarity}｜${cat.name}`,
+      `【世界猫生ガチャ】${cat.name}`,
       `${cat.region.flag} ${placeText(cat)}の${cat.statusLabel}・${cat.speciesName}／享年${ageText(cat.ageYears)}`
     ];
     if (cat.nekomata) lines.push('🔮 100歳まで生きて、猫又になった');
@@ -638,7 +697,7 @@
       <div class="album-main" data-album="${rec.id}" role="button" tabindex="0" aria-label="${rec.name}の猫生を開く">
         <span class="album-thumb">${albumStill(rec, 'is-thumb')}</span>
         <span class="album-info">
-          <span class="album-name">${rec.name || '名もなき猫'}<span class="rarity r-${rec.rarity || 'N'}">${rec.rarity || 'N'}</span></span>
+          <span class="album-name">${rec.name || '名もなき猫'}${albumRareChip(rec)}</span>
           <span class="album-sub">${reg.flag || '🌍'} ${reg.name || ''}</span>
           <span class="album-line">${rec.speciesName || ''}${coat ? '・' + coat : ''}</span>
           <span class="album-line">🌈 享年 <b>${ageText(ageY)}</b>${stats ? `　❤️${stats.energy} 🐟${stats.food} 🍀${stats.luck}` : ''}</span>
@@ -714,7 +773,7 @@
       [coatKey, coatVal],
       ['性別', rec.gender || '—'],
       ['目の色', rec.eyeColor || '—'],
-      ['珍しさ', `${rec.rarity}（${E.formatProb(rec.probability || 0)}）`],
+      ['珍しさ', `${E.formatOneIn(rec.probability || 0)}${rec.probability ? '（' + E.formatProb(rec.probability) + '）' : ''}`],
       ['境遇', rec.statusLabel || '—'],
       ['享年', `${ageText(ageY)}${cause ? '（' + cause + '）' : ''}`]
     ].map(r => `<div class="who-row"><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
@@ -793,7 +852,6 @@
         ${on ? '<span class="ach-mark">✓</span>' : ''}
       </div>`;
     }).join('');
-    const rar = E.RARITY_ORDER.map(r => `<li><span>${r}（${RARITY_JP[r]}）</span><span>${dex.rarities[r] || 0}回</span></li>`).join('');
     const longest = dex.longest
       ? `${ageText(dex.longest.age)}${dex.longest.species ? '（' + dex.longest.species + '）' : ''}`
       : '—';
@@ -804,7 +862,7 @@
       ['ボス猫になった', (dex.bossCount || 0) + '回'],
       ['猫又になった', (dex.nekomata || 0) + '回'],
       ['招き猫になった', (dex.maneki || 0) + '回'],
-      ['最高レア', dex.best ? dex.best.rarity + '・' + dex.best.species : '—'],
+      ['いちばん珍しい猫', rarestText(dex)],
       ['図鑑コンプ率', got + ' / ' + TOTAL_TARGETS + '（' + pct + '%）'],
       ['実績', achGot + ' / ' + E.ACHIEVEMENTS.length]
     ].map(r => `<li><span>${r[0]}</span><span>${r[1]}</span></li>`).join('');
@@ -814,7 +872,7 @@
       const rec = albums[i];
       /* 同じ順番（新しい順）で積まれているので、名前と種別が一致するときだけ詳細に飛ばす */
       const link = (rec && rec.name === h.name && rec.speciesName === h.species) ? rec.id : null;
-      const row = `<span>${mark ? mark + ' ' : ''}${h.rarity}・${h.species}（${h.region}）</span><span>${ageText(h.age)}${link ? ' ›' : ''}</span>`;
+      const row = `<span>${mark ? mark + ' ' : ''}${h.species}（${h.region}）</span><span>${ageText(h.age)}${link ? ' ›' : ''}</span>`;
       return link
         ? `<li class="record-link" data-album="${link}" role="button" tabindex="0">${row}</li>`
         : `<li>${row}</li>`;
@@ -831,6 +889,7 @@
   function init() {
     if (typeof document === 'undefined') return;
 
+    ZOOM_GUARD.install(document);
     const $ = id => document.getElementById(id);
     const state = {
       dex: loadDex(), current: null, rolling: false, tab: 'species', step: 0,
@@ -859,7 +918,6 @@
       autoBtn: $('autoBtn'), autoBtnIcon: $('autoBtnIcon'), autoBtnText: $('autoBtnText'),
       autoNote: $('autoNote'), speed1: $('speed1'), speed2: $('speed2'),
       lifeAge: $('lifeAge'), lifeSeason: $('lifeSeason'), lifeMarks: $('lifeMarks'),
-      soundBtn: $('soundBtn'), soundIcon: $('soundIcon'),
       stagePinch: $('stagePinch'), stageAlert: $('stageAlert'),
       cardBtn: $('cardBtn'), cardModal: $('cardModal'), cardImg: $('cardImg'), cardPreview: $('cardPreview'),
       cardDownload: $('cardDownload'), cardShare: $('cardShare'), cardNative: $('cardNative'), closeCard: $('closeCard')
@@ -890,7 +948,7 @@
     function refreshStats() {
       const d = state.dex;
       el.statTotal.textContent = d.total;
-      el.statBest.textContent = d.best ? d.best.rarity : '—';
+      el.statBest.textContent = d.rarest ? E.formatOneIn(d.rarest.probability) : '—';
       const got = achievement(d);
       el.statRate.textContent = Math.round(got / TOTAL_TARGETS * 100) + '%';
       el.dexBadge.textContent = got;
@@ -901,10 +959,6 @@
     function toast(text, tone) {
       el.stageToast.textContent = text;
       el.stageToast.className = 'stage-toast is-on ' + (tone ? 'is-' + tone : '');
-      if (tone === 'adopt') SND.play('adopt');
-      else if (tone === 'evolve') SND.play('evolve');
-      else if (tone === 'milestone') SND.play('milestone');
-      else if (tone === 'danger') SND.play('pinch');
       const t = root.setTimeout || setTimeout;
       t(function () { el.stageToast.className = 'stage-toast'; }, 2200);
     }
@@ -1012,9 +1066,8 @@
         el.stageAlert.className = 'stage-alert' + (txt ? ' is-on ' + cls : '');
         el.stageAlert.hidden = !txt;
       }
-      if (fate && fate.pinch && !dead && !state.shownPinch) {
+      if (fate && fate.pinch && !dead) {
         state.shownPinch = true;
-        SND.play('pinch');
       } else if (!fate || !fate.pinch) {
         state.shownPinch = false;
       }
@@ -1031,7 +1084,6 @@
         art.classList.add('is-hop');
       }
       state.taps += 1;
-      SND.play('tap');
       const b = A.bubbleFor(cat.seed || 1, state.taps);
       const layer = document.getElementById('bubbleLayer');
       if (layer) {
@@ -1243,7 +1295,6 @@
           state.recorded = true;
           state.newAch = unlockAchievements(state.dex, cat);
           refreshStats();
-          SND.play('death');
         }
         el.finaleBody.innerHTML = buildFinaleHTML(cat, state.newAch, state.dex);
       } else {
@@ -1318,7 +1369,6 @@
       stopChoiceClock();
       state.choiceLeft = null;
       hideChoiceClock();
-      SND.play('choice');
       const autoPick = !!state.autoPicked;
       const fx = E.applyChoice(cat, idx, i);
       /* 放っておいて選ばれたのか（おまかせ）、読んで選んだのかを記録に残す */
@@ -1379,7 +1429,6 @@
       state.rolling = true;
       el.rollBtn.disabled = true;
       el.overlay.hidden = false;
-      SND.play('roll');
 
       const cat = E.rollCat();
       const start = Date.now();
@@ -1408,7 +1457,6 @@
         el.rollBtn.disabled = false;
         state.rolling = false;
         startStory(c);
-        SND.play('birth');
       }
     }
 
@@ -1430,7 +1478,7 @@
     function albumShareURL(rec) {
       const d = CATCARD.cardData(rec) || {};
       const lines = [
-        `【世界猫生ガチャ】${d.rarity || 'N'}｜${d.name || '名もなき猫'}`,
+        `【世界猫生ガチャ】${d.name || '名もなき猫'}`,
         `${d.flag || '🌍'} ${d.place || ''}${d.species ? 'の' + d.species : ''}／享年${d.ageLabel || ''}${d.cause ? '（' + d.cause + '）' : ''}`
       ];
       if (d.nekomata) lines.push('🔮 100年を生きた猫又');
@@ -1476,7 +1524,6 @@
         if (el.cardNative) el.cardNative.hidden = !(root.navigator && typeof root.navigator.canShare === 'function');
         if (el.cardModal) el.cardModal.hidden = false;
         if (root.document && root.document.body && root.document.body.style) root.document.body.style.overflow = 'hidden';
-        SND.play('card');
       };
       if (typeof root.Image !== 'function') { paint(null); return; }
       try {
@@ -1515,20 +1562,6 @@
     if (el.cardNative) el.cardNative.addEventListener('click', shareCardNative);
 
     /* --- 🔊 音のON/OFF --- */
-    function paintSound() {
-      const on = SND.isOn();
-      if (el.soundIcon) el.soundIcon.textContent = on ? '🔊' : '🔇';
-      if (el.soundBtn) {
-        el.soundBtn.classList.toggle('is-off', !on);
-        if (el.soundBtn.setAttribute) {
-          el.soundBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-          el.soundBtn.setAttribute('aria-label', on ? '音をオフにする' : '音をオンにする');
-        }
-      }
-    }
-    if (el.soundBtn) el.soundBtn.addEventListener('click', () => { SND.toggle(); paintSound(); });
-    paintSound();
-
     /* ⭐お気に入り */
     function onFavorite(id) {
       const r = toggleFavorite(state.dex, id);
@@ -1625,6 +1658,7 @@
     root.CATAPP.roll = roll;
     root.CATAPP.openDex = openDex;
     root.CATAPP.state = state;
+    root.CATAPP.zoomGuard = ZOOM_GUARD;
     root.CATAPP.tapCat = tapCat;
     root.CATAPP.autoTick = autoTick;
     root.CATAPP.toggleAuto = toggleAuto;
@@ -1644,7 +1678,6 @@
     root.CATAPP.showCard = showCard;
     root.CATAPP.closeCard = closeCard;
     root.CATAPP.albumShareURL = albumShareURL;
-    root.CATAPP.paintSound = paintSound;
     root.CATAPP.findAlbum = findAlbum;
   }
 
