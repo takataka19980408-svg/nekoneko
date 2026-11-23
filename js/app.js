@@ -137,8 +137,6 @@
     const isBirth = step.kind === 'birth';
     const isDeath = step.kind === 'death';
     const pick = picked ? picked[idx] : undefined;
-    const chosen = step.choice && pick != null ? step.choice.options[pick] : null;
-    const body = chosen ? chosen.text : step.text;
     return `
     <article class="page${isBirth ? ' page--birth' : ''}${isDeath ? ' page--death' : ''}">
       <span class="page-tape" aria-hidden="true"></span>
@@ -151,7 +149,7 @@
       <div class="page-art">${S.render(cat, { stage: step.stage, eyes: isDeath ? 'closed' : undefined })}</div>
       ${isBirth ? `<p class="born-line">🌏 ${bornLine(cat)}</p>` : ''}
       <h2 class="page-title">${isDeath ? '🌈 最期' : '【' + step.title + '】'}</h2>
-      <p class="page-text">${body}</p>
+      <p class="page-text">${step.text}</p>
       ${isBirth ? traitsHTML(cat) : ''}
       ${step.choice ? choiceHTML(step, pick) : ''}
     </article>`;

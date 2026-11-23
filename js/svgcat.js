@@ -304,16 +304,27 @@
           : p.tall ? 'tall'
             : p.mane ? 'round'
               : 'normal';
-    const ears = {
+    let ears = {
       normal: { l: [[112, 96], [138, 76], [98, 34]], r: [[208, 96], [182, 76], [222, 34]] },
       fold: { l: [[114, 96], [138, 80], [106, 58]], r: [[206, 96], [182, 80], [214, 58]] },
       big: { l: [[106, 92], [134, 68], [60, 12]], r: [[214, 92], [186, 68], [260, 12]] },
       tall: { l: [[110, 96], [138, 74], [88, 14]], r: [[210, 96], [182, 74], [232, 14]] },
       round: { l: [[118, 92], [140, 78], [112, 56]], r: [[202, 92], [180, 78], [208, 56]] }
     }[earType];
+    if (stage === 'kitten') {
+      // 子猫は耳を短め・丸めに（頭の中心に向かって縮める）
+      const k = 0.8;
+      ears = {
+        l: ears.l.map(q => [160 + (q[0] - 160) * k, 128 + (q[1] - 128) * k]),
+        r: ears.r.map(q => [160 + (q[0] - 160) * k, 128 + (q[1] - 128) * k])
+      };
+    }
     const sg = STAGE_SCALE[stage] || STAGE_SCALE.adult;
+    const neck = stage === 'kitten' ? { cy: 196, rx: 45, ry: 32 }
+      : stage === 'senior' ? { cy: 186, rx: 39, ry: 23 }
+        : { cy: 184, rx: 39, ry: 22 };
     return {
-      big, earType, ears, stage,
+      big, earType, ears, stage, neck,
       head: { x: 160, y: 128, r: big ? 60 : 58 },
       headScale: sg.head,
       bodyScale: sg.body,
@@ -705,7 +716,8 @@
     <path d="${BODY_PATH}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
     ${legs}
     ${ruff}
-    <ellipse cx="160" cy="192" rx="46" ry="34" fill="${fill}"/>
+    <ellipse cx="160" cy="${g.neck.cy}" rx="${g.neck.rx}" ry="${g.neck.ry}" fill="${fill}"/>
+    <ellipse cx="160" cy="${(g.neck.cy + g.neck.ry * 0.55).toFixed(1)}" rx="${(g.neck.rx * 0.86).toFixed(1)}" ry="${(g.neck.ry * 0.42).toFixed(1)}" fill="#000" opacity=".045"/>
   </g>
   <g transform="${headT}">
     ${mane}
