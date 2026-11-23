@@ -115,11 +115,10 @@
   function stepBadge(cat, i) {
     const step = cat.story[i];
     const out = [];
-    if (step.kind === 'birth') out.push('🐾 生まれた日');
-    else if (step.kind === 'death') out.push('🌈 最期');
-    else if (step.kind === 'adopt') out.push(step.maneki ? '🏮 お店に迎えられた日' : '🏡 拾われた日');
+    /* 生まれた日・最期は年齢チップと見出しで分かるので、バッジは足さない */
+    if (step.kind === 'adopt') out.push(step.maneki ? '🏮 お店に迎えられた日' : '🏡 拾われた日');
     else if (step.kind === 'evolve') out.push('🔮 猫又になった日');
-    else {
+    else if (step.kind === 'event') {
       const ms = E.milestoneAt(cat.story, i);
       if (ms) out.push(ms.icon + ' ' + ms.label);
     }
@@ -617,10 +616,8 @@
   function albumStepHTML(log) {
     const season = log.season ? `<span class="album-season">${E.seasonEmoji(log.season)}${E.seasonLabel(log.season)}</span>` : '';
     const badge = log.badge ? `<span class="album-step-badge">${log.badge}</span>` : '';
-    const title = log.kind === 'birth' ? '生まれた日'
-      : log.kind === 'death' ? '最期'
-      : log.kind === 'adopt' ? (log.title || '拾われた日')
-      : log.kind === 'evolve' ? (log.title || '猫又になる')
+    const title = log.kind === 'death' ? '🌈 最期'
+      : (log.kind === 'birth' || log.kind === 'adopt' || log.kind === 'evolve') ? ''
       : (log.title ? '【' + log.title + '】' : '');
     const pick = log.pickedLabel
       ? `<div class="album-pick"><span class="album-pick-tag">🐾 選んだ：${log.pickedLabel}</span>${log.pickedAuto ? '<span class="album-pick-auto">おまかせ</span>' : ''}</div>${log.pickedText ? `<p class="album-pick-text">${log.pickedText}</p>` : ''}`
