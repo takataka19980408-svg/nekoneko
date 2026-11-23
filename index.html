@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbf6ee">
+<meta name="description" content="地球上の約10億匹の猫から、ガチリアル確率で1匹に生まれ変わるシミュレーター。野生のネコ科46種、純血種74種、世界78カ国。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>世界猫生ガチャ｜約10億分の1の猫に転生</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='52'%3E%F0%9F%90%88%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">🐾</span>
+      <span class="brand-text">世界猫生ガチャ</span>
+    </div>
+    <button class="dex-btn" id="openDex" aria-label="転生猫図鑑を開く">
+      <span>図鑑</span><span class="dex-badge" id="dexBadge">0</span>
+    </button>
+  </header>
+
+  <main class="main">
+    <!-- ホーム -->
+    <section class="screen" id="homeScreen">
+      <div class="hero">
+        <p class="hero-kicker">地球上の猫 <b>約10億匹</b></p>
+        <h1 class="hero-title">あなたは、<br>どの子に生まれ変わる？</h1>
+        <p class="hero-sub">飼い猫・地域猫・野良猫・野生のネコ科・動物園。<br>ぜんぶ混ぜて、ガチの確率で1匹。</p>
+      </div>
+
+      <div class="gacha-stage">
+        <div class="preview" id="catPreview" aria-hidden="true"></div>
+        <div class="roll-overlay" id="rollOverlay" hidden>
+          <div class="roll-ring"></div>
+          <div class="roll-ring roll-ring--2"></div>
+          <div class="roll-flag" id="rollFlag">🌍</div>
+          <div class="roll-text" id="rollText">転生先を探しています…</div>
+          <div class="roll-sparks" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+      </div>
+
+      <button class="primary" id="rollBtn">
+        <span class="primary-label">ガチャを回す</span>
+        <span class="primary-sub">約10億分の1</span>
+      </button>
+
+      <div class="home-meta">
+        <div class="meta-item"><b id="statTotal">0</b><span>転生回数</span></div>
+        <div class="meta-item"><b id="statBest">—</b><span>最高レア</span></div>
+        <div class="meta-item"><b id="statRate">0%</b><span>図鑑達成率</span></div>
+      </div>
+
+      <p class="disclaimer">※ 確率と生息数は各種統計・推計をもとにしたゲーム内の近似値です。</p>
+    </section>
+
+    <!-- 結果 -->
+    <section class="screen" id="resultScreen" hidden>
+      <div id="resultCard" class="result-card"></div>
+      <div class="result-actions">
+        <button class="primary" id="againBtn">もう一度回す</button>
+        <div class="sub-actions">
+          <button class="ghost" id="shareBtn">𝕏 でシェア</button>
+          <button class="ghost" id="toDexBtn">図鑑を見る</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 図鑑 -->
+  <div class="modal" id="dexModal" hidden>
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="転生猫図鑑">
+      <div class="modal-head">
+        <h2>転生猫図鑑</h2>
+        <button class="close-btn" id="closeDex" aria-label="閉じる">✕</button>
+      </div>
+      <div class="dex-summary" id="dexSummary"></div>
+      <div class="dex-tabs" role="tablist">
+        <button class="tab is-active" data-tab="species" role="tab">種別</button>
+        <button class="tab" data-tab="countries" role="tab">国・地域</button>
+        <button class="tab" data-tab="mutations" role="tab">変異</button>
+        <button class="tab" data-tab="records" role="tab">記録</button>
+      </div>
+      <div class="dex-body" id="dexBody"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/data-core.js"></script>
+<script src="js/breeds.js"></script>
+<script src="js/wild.js"></script>
+<script src="js/data-countries.js"></script>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/svgcat.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
