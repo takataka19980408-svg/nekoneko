@@ -354,7 +354,11 @@
     cat.probability = cat.population / D.TOTAL;
     cat.rarity = rarityOf(cat);
     cat.ageLabel = ageLabel(cat.ageYears);
-    cat.timeline = buildTimeline(cat, rng);
+    cat.bornPlace = cat.klass === 'wild'
+      ? (cat.route === 'zoo' ? cat.address : cat.species.range)
+      : cat.region.name + (cat.city && cat.city !== cat.region.name ? '・' + cat.city : '');
+    cat.timeline = buildStory(cat, rng);
+    cat.story = cat.timeline;
     cat.caption = buildCaption(cat, rng);
     cat.dex = {
       species: cat.speciesKey,
@@ -408,38 +412,216 @@
     return '約' + one.toFixed(1) + '分の1';
   }
 
-  /* ---------- 猫生タイムライン ---------- */
-  function buildTimeline(cat, rng) {
-    const age = cat.ageYears;
-    const events = [{ age: 0, kind: 'birth', text: birthText(cat, rng) }];
+  /* ---------- 成長ステージ ---------- */
+  const STAGES = ['kitten', 'adult', 'senior'];
+  const STAGE_LABEL = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
 
-    if (age >= 2) {
-      const pool = [];
-      (cat.region.events || []).forEach(t => pool.push({ w: 1.4, min: 1.5, max: Infinity, text: t }));
-      GENERIC_EVENTS(cat).forEach(e => pool.push({ w: e.w, min: e.min, max: e.max, text: e.text }));
-      if (cat.klass === 'wild') WILD_EVENTS(cat).forEach(e => pool.push({ w: e.w, min: e.min, max: e.max, text: e.text }));
+  function stageForAge(age) {
+    const a = Number(age) || 0;
+    if (a < 1) return 'kitten';
+    if (a < 10) return 'adult';
+    return 'senior';
+  }
 
-      const count = age < 3 ? 1 : age < 6 ? 2 + (chance(0.4, rng) ? 1 : 0) : 3 + Math.floor(rng() * 3);
-      const used = {};
-      for (let i = 0; i < count && pool.length; i++) {
-        const e = pool.splice(pickIndex(pool.map(x => x.w), rng), 1)[0];
-        if (e.min >= age - 0.4) continue;
-        const hi = Math.min(e.max === Infinity ? age - 0.4 : e.max, age - 0.3);
-        if (hi <= e.min) continue;
-        let a = e.min + rng() * (hi - e.min);
-        a = clamp(a, e.min, hi);
-        const key = Math.round(a);
-        if (used[key]) continue;
-        used[key] = 1;
-        events.push({ age: a, kind: 'event', text: e.text });
+  /* 1猫生の歩数（誕生と最期を含む）: 寿命に応じて3〜7 */
+  function storyStepCount(age) {
+    if (age < 1) return 3;
+    if (age < 3) return 4;
+    if (age < 6) return 5;
+    if (age < 12) return 6;
+    return 7;
+  }
+
+  const STORY_TITLES = {
+    kitten: ['こねこの毎日', 'はじめての出来事', 'やんちゃざかり', '小さな冒険'],
+    adult: ['ある日のこと', '季節がめぐる', 'いつのまにか', 'いつもの場所で'],
+    senior: ['しずかな日々', 'ゆっくりと', '日だまりの午後', 'のんびりと']
+  };
+
+  /* ---------- 選択イベント ---------- */
+  const CHOICE_EVENTS = [
+    {
+      scene: 'home', min: 0.2, max: 20,
+      question: '段ボール箱を見つけた！ どうする？',
+      options: [
+        { label: 'すぐ入る', text: 'すっぽり収まって、そのままお昼寝。世界でいちばんちょうどいい箱だった。' },
+        { label: 'まわりを一周する', text: '念入りに匂いを確かめてから、結局入った。箱には勝てない。' }
+      ]
+    },
+    {
+      scene: 'any', min: 0.4, max: 22,
+      question: '窓辺にちょうちょがとまった。どうする？',
+      options: [
+        { label: 'そっと見つめる', text: 'しっぽの先だけが小さく動く。しばらく、時間が止まったみたいだった。' },
+        { label: '飛びつく', text: '見事に空振り。でもそのあと、ひとりで満足そうに毛づくろいをした。' }
+      ]
+    },
+    {
+      scene: 'home', min: 0.5, max: 22,
+      question: '家族がなんだか元気がないみたい。どうする？',
+      options: [
+        { label: '膝に乗る', text: '何も言わずに膝で丸くなった。それだけで、部屋の空気が少しやわらかくなった。' },
+        { label: '頭をこつんとする', text: 'おでこをそっとぶつけたら、手がゆっくり頭に置かれた。' }
+      ]
+    },
+    {
+      scene: 'home', min: 0.3, max: 24,
+      question: 'おやつの干し魚が届いた！ どうする？',
+      options: [
+        { label: 'すぐ食べる', text: '夢中でたいらげて、食べ終わってから手をぺろぺろした。' },
+        { label: 'あとで食べる', text: '大事に隠しておいたのに、次の日には場所を忘れていた。' }
+      ]
+    },
+    {
+      scene: 'out', min: 0.3, max: 20,
+      question: '岩のすき間に、なにかが光っている。どうする？',
+      options: [
+        { label: '近づいてみる', text: '小さな虫だった。すぐ逃げられたけど、なんだか得した気分。' },
+        { label: '見なかったことにする', text: '危ないものは追わない。それが長生きのコツ。' }
+      ]
+    },
+    {
+      scene: 'out', min: 1, max: 20,
+      question: '見知らぬ猫が、こちらの場所を見ている。どうする？',
+      options: [
+        { label: 'にらみ返す', text: '一歩も引かずに見返したら、相手が先に目をそらした。' },
+        { label: '場所をゆずる', text: 'ゆずった場所の近くで、思ったよりいい昼寝スポットを見つけた。' }
+      ]
+    },
+    {
+      scene: 'any', min: 0.2, max: 24,
+      question: '雨が降ってきた。どうする？',
+      options: [
+        { label: '外に出てみる', text: '足先だけ濡らして、すぐ引き返した。やっぱり屋根の下がいちばん。' },
+        { label: '軒先から見る', text: 'しずくの落ちる音を、しっぽをゆらしながら眺めていた。' }
+      ]
+    },
+    {
+      scene: 'any', min: 2, max: 24,
+      question: '夜中、あたりがしんと静まり返っている。どうする？',
+      options: [
+        { label: '走り回る', text: '誰も見ていない時間に全力疾走。これが猫の正義。' },
+        { label: '丸くなって寝る', text: 'いちばん柔らかい場所を選んで、朝までぐっすり。' }
+      ]
+    }
+  ];
+
+  function storyPool(cat) {
+    const out = [];
+    (cat.region && cat.region.events ? cat.region.events : []).forEach(t => out.push({ w: 1.3, min: 1.4, max: Infinity, text: t }));
+    GENERIC_EVENTS(cat).forEach(e => out.push(e));
+    if (cat.klass === 'wild') WILD_EVENTS(cat).forEach(e => out.push(e));
+    return out;
+  }
+
+  function storyGroup(cat) {
+    if (cat.klass === 'wild') return 'out';
+    if (cat.route === 'street' || cat.route === 'feral') return 'out';
+    return 'home';
+  }
+
+  function pickStoryEvent(pool, used, age, rng) {
+    let cands = pool.filter(e => used.indexOf(e) < 0 && age >= e.min && age <= e.max);
+    if (!cands.length) {
+      const rest = pool.filter(e => used.indexOf(e) < 0);
+      if (!rest.length) return null;
+      const mid = e => e.min + (Math.min(e.max, 30) - e.min) / 2;
+      cands = rest.slice().sort((x, y) => Math.abs(mid(x) - age) - Math.abs(mid(y) - age)).slice(0, 4);
+    }
+    const e = cands[pickIndex(cands.map(x => x.w || 1), rng)];
+    used.push(e);
+    return e;
+  }
+
+  function fallbackStoryText(stage, rng) {
+    const pool = {
+      kitten: ['ころころ転がって、一日の半分を眠って過ごす。', '小さな体で、家中（あたり）のすみずみまで探検する。'],
+      adult: ['同じ場所で、同じ時間に、しっぽをのばして伸びをする。', '日だまりを見つけるのが、その日のいちばんの仕事。'],
+      senior: ['歩くのが少しゆっくりになった。それでも、行く場所は決まっている。', '長く寝て、起きて、また眠る。それでいい日だった。']
+    }[stage] || ['静かな一日が過ぎていく。'];
+    return pick(pool, rng);
+  }
+
+  /* ---------- 猫生ストーリー（1ステップずつ歩く） ---------- */
+  function buildStory(cat, rng) {
+    const age = Math.max(0.08, Number(cat.ageYears) || 0.08);
+    const total = storyStepCount(age);
+    const eventCount = Math.max(1, total - 2);
+
+    const steps = [{
+      kind: 'birth', age: 0, ageLabel: '生まれた日', stage: 'kitten', title: '誕生',
+      text: birthText(cat, rng)
+    }];
+
+    const pool = storyPool(cat);
+    const used = [];
+    const group = storyGroup(cat);
+
+    const slots = [];
+    for (let i = 1; i <= eventCount; i++) {
+      const slot = age / (eventCount + 1);
+      let a = slot * i + (rng() - 0.5) * slot * 0.4;
+      a = clamp(a, Math.max(0.02, slot * (i - 1) + 0.01), Math.min(age * 0.96, slot * (i + 1) - 0.01));
+      slots.push(a);
+    }
+
+    const choiceFor = {};
+    if (eventCount >= 2) {
+      const order = [];
+      for (let j = 1; j <= eventCount; j++) order.push(j);
+      for (let j = order.length - 1; j > 0; j--) {
+        const k = Math.floor(rng() * (j + 1));
+        const t = order[j]; order[j] = order[k]; order[k] = t;
       }
+      const wanted = chance(0.62, rng) ? 2 : 1;
+      const taken = [];
+      let set = 0;
+      for (let oi = 0; oi < order.length && set < wanted; oi++) {
+        const j = order[oi];
+        const a = slots[j - 1];
+        const fits = CHOICE_EVENTS.filter(ch =>
+          taken.indexOf(ch) < 0 && (ch.scene === 'any' || ch.scene === group) && a >= ch.min && a <= ch.max);
+        if (!fits.length) continue;
+        const ch = fits[Math.floor(rng() * fits.length)];
+        taken.push(ch);
+        choiceFor[j] = ch;
+        set++;
+      }
+    }
+
+    for (let i = 1; i <= eventCount; i++) {
+      const a = slots[i - 1];
+      const stage = stageForAge(a);
+      const titles = STORY_TITLES[stage] || STORY_TITLES.adult;
+      const title = titles[(i - 1) % titles.length];
+      const ch = choiceFor[i];
+      if (ch) {
+        steps.push({
+          kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
+          text: ch.question,
+          choice: { question: ch.question, options: ch.options.map(o => ({ label: o.label, text: o.text })) }
+        });
+        continue;
+      }
+      const e = pickStoryEvent(pool, used, a, rng);
+      steps.push({
+        kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
+        text: e ? e.text : fallbackStoryText(stage, rng)
+      });
     }
 
     const death = deathOf(cat, rng);
     cat.deathCause = death.cause;
-    events.push({ age: Math.max(age, 0), kind: 'death', text: death.text, cause: death.cause });
-    events.sort((a, b) => a.age - b.age);
-    return events;
+    steps.push({
+      kind: 'death', age: age, ageLabel: ageLabel(age), stage: stageForAge(age),
+      title: '最期', text: death.text, cause: death.cause
+    });
+
+    return steps;
+  }
+
+  function buildTimeline(cat, rng) {
+    return buildStory(cat, rng);
   }
 
   function birthText(cat, rng) {
@@ -485,6 +667,8 @@
     const r = cat.route;
     const out = [];
     if (r === 'owned' || r === 'purebred') {
+      out.push({ w: 1.4, min: 0.1, max: 1.2, text: '目が開いて、はじめて人の顔をじっと見つめる。' });
+      out.push({ w: 1.3, min: 0.2, max: 1.4, text: 'よちよち歩きで、きょうだいのしっぽを追いかける。' });
       out.push({ w: 1.2, min: 0.6, max: 2, text: 'ワクチンの注射をされ、しばらく耳を伏せてふくれている。' });
       out.push({ w: 1.2, min: 1, max: 4, text: '初めてキャットタワーを上りきり、頂上から家族を見下ろして満足げ。' });
       out.push({ w: 1.0, min: 2, max: 7, text: '避妊・去勢手術を受け、その日は一日中ぐったりして過ごす。' });
@@ -494,22 +678,26 @@
       out.push({ w: 0.7, min: 8, max: 18, text: '健康診断で「腎臓の数値が少し高い」と言われ、療法食に切り替わる。' });
       out.push({ w: 0.6, min: 10, max: 22, text: '若い猫にちょっかいを出されても、もう本気で怒らなくなった。' });
     } else if (r === 'community') {
+      out.push({ w: 1.4, min: 0.1, max: 1.2, text: '段ボールの家の中で、はじめて外の音を聞く。' });
       out.push({ w: 1.2, min: 0.5, max: 2, text: '耳に小さな切れ込み（TNRの印）が入り、地域猫の一員になる。' });
       out.push({ w: 1.2, min: 1, max: 6, text: '毎朝同じ時間に餌やりさんの自転車の音を聞き分けて走っていく。' });
       out.push({ w: 1.0, min: 1, max: 8, text: '冬の寒さをしのぐため、駐車場のエンジンルームに潜り込む。' });
       out.push({ w: 0.8, min: 2, max: 10, text: '見知らぬ人には絶対に触らせないが、餌やりさんにはお腹を見せる。' });
       out.push({ w: 0.7, min: 3, max: 12, text: '掲示板に「この猫に餌をあげないでください」と書かれる。' });
     } else if (r === 'street') {
+      out.push({ w: 1.4, min: 0.1, max: 1.1, text: '母猫のお腹の下で、はじめて目を開ける。' });
       out.push({ w: 1.3, min: 0.4, max: 2, text: '母猫とはぐれ、雨の夜に初めてひとりで餌を探す。' });
       out.push({ w: 1.2, min: 0.8, max: 4, text: '同じ縄張りの大きなオスに追われ、塀の上まで逃げる。' });
       out.push({ w: 1.0, min: 1, max: 6, text: 'コンビニの店先で、店員がこっそり出してくれるおにぎりにありつく。' });
       out.push({ w: 0.9, min: 1, max: 8, text: '車の下で眠るのが癖になり、何度も危ない目にあう。' });
       out.push({ w: 0.7, min: 2, max: 12, text: '保護活動の人が罠を仕掛け、ケージの中で一日を過ごす。' });
     } else if (r === 'feral') {
+      out.push({ w: 1.4, min: 0.2, max: 1.2, text: '茂みの奥で、はじめて外の世界の匂いをかいだ。' });
       out.push({ w: 1.3, min: 0.5, max: 3, text: '人の気配だけで茂みに消える。誰にも触られたことがない。' });
       out.push({ w: 1.1, min: 1, max: 6, text: '夜ごと縄張りを巡回し、匂いで境界線を引き直す。' });
       out.push({ w: 0.9, min: 1, max: 9, text: '小さな獲物を捕らえ、それを唯一の糧にして生き延びる。' });
     } else if (r === 'zoo') {
+      out.push({ w: 1.4, min: 0.1, max: 1.2, text: '産室の床で、はじめてよろよろと立ち上がる。' });
       out.push({ w: 1.2, min: 0.5, max: 3, text: '飼育員が名前を呼ぶと、ガラスの前まで歩いてくるようになる。' });
       out.push({ w: 1.0, min: 1, max: 8, text: '毎日決まった時間に肉が運ばれ、食べ残すことすらある。' });
       out.push({ w: 0.8, min: 3, max: 15, text: '種の保存のため、遠くの動物園から見合い相手がやってくる。' });
@@ -546,7 +734,6 @@
     const veryOld = age >= 20;
 
     if (age < 1) {
-      const m = Math.max(1, Math.round(age * 12));
       const pool = (route === 'owned' || route === 'purebred')
         ? ['猫風邪をこじらせ、母猫の体温の中で息を引き取る。',
           '先天性の心臓の病気が見つかり、獣医の腕の中で眠るように逝く。',
@@ -556,12 +743,12 @@
           : ['寒さと飢えに耐えられず、母猫の胸に抱かれたまま冷たくなる。',
             'カラスに狙われ、庇われたものの助からない。',
             '猫風邪で目が塞がり、食べ物にありつけないまま弱っていく。'];
-      return { cause: 'early', text: `生後${m >= 12 ? '1年' : m + 'か月'}。${pick(pool, rng)}` };
+      return { cause: 'early', text: pick(pool, rng) };
     }
 
     if (route === 'owned' || route === 'purebred' || route === 'community') {
-      if (veryOld) return { cause: 'natural', text: `享年${ageText(age)}。前の日まで日向ぼっこをしていた。ある朝、いつもの場所で動かなくなっていた。大往生。` };
-      if (old) return { cause: 'illness', text: `享年${ageText(age)}。腎臓の病気が進み、獣医に看取られて静かに息を引き取る。` };
+      if (veryOld) return { cause: 'natural', text: '前の日まで日向ぼっこをしていた。ある朝、いつもの場所で動かなくなっていた。大往生。' };
+      if (old) return { cause: 'illness', text: '腎臓の病気が進み、獣医に看取られて静かに息を引き取る。' };
       const pool = [
         { c: 'illness', t: '病気が急に進み、病院に運ばれたものの帰らなかった。' },
         { c: 'accident', t: '珍しく外に出た日に、車にはねられる。' },
@@ -569,15 +756,15 @@
         { c: 'natural', t: 'ある日を境に食べなくなり、静かに息を引き取る。' }
       ];
       const d = pick(pool, rng);
-      return { cause: d.c, text: `享年${ageText(age)}。${d.t}` };
+      return { cause: d.c, text: d.t };
     }
 
     if (route === 'zoo') {
-      return { cause: 'natural', text: `享年${ageText(age)}。獣医と飼育員に見守られ、眠るように逝く。長生きした。` };
+      return { cause: 'natural', text: '獣医と飼育員に見守られ、眠るように逝く。長生きした。' };
     }
 
     if (route === 'wild') {
-      if (old) return { cause: 'natural', text: `享年${ageText(age)}。野生としては長生きの部類。縄張りの岩の上で、静かに動かなくなっていた。` };
+      if (old) return { cause: 'natural', text: '野生としては長生きの部類。縄張りの岩の上で、静かに動かなくなっていた。' };
       const pool = [
         { c: 'starve', t: '獲物が減った季節、十分に食べられないまま力尽きる。' },
         { c: 'fight', t: '縄張り争いで深い傷を負い、傷が癒えないまま息を引き取る。' },
@@ -587,7 +774,7 @@
       ];
       if (cat.speciesGroup === 'island') pool.push({ c: 'human', t: '島の道路を渡る途中、車と出会う。' });
       const d = pick(pool, rng);
-      return { cause: d.c, text: `享年${ageText(age)}。${d.t}` };
+      return { cause: d.c, text: d.t };
     }
 
     const pool = [
@@ -600,7 +787,7 @@
     ];
     if (cat.country && (cat.country.key === 'au' || cat.country.key === 'nz')) pool.push({ c: 'human', t: '在来種を守るための駆除の対象になり、静かに消える。' });
     const d = pick(pool, rng);
-    return { cause: d.c, text: `享年${ageText(age)}。${d.t}` };
+    return { cause: d.c, text: d.t };
   }
 
   function buildCaption(cat, rng) {
@@ -640,7 +827,8 @@
   }
 
   return {
-    mulberry32, newSeed, rollCat, sampleLifespan, buildTimeline,
+    mulberry32, newSeed, rollCat, sampleLifespan, buildTimeline, buildStory,
+    stageForAge, storyStepCount, STAGES, STAGE_LABEL,
     formatCount, formatProb, formatOneIn, ageText, ageLabel,
     rarityOf, dexCatalog, RARITY_ORDER, deathOf, buildCaption
   };

@@ -1,7 +1,8 @@
 """世界猫生ガチャ — 検証スクリプト
 1) 10,000回の抽選シミュレーション（例外・分布・寿命・整合性）
-2) 全アセット（SVG）の生成チェック
-3) データ網羅性のチェック（純血種・野生ネコ科・国）
+2) 猫生ストーリー（3〜7歩・子猫→成猫→シニアの成長・2択）の検査
+3) 全アセット（SVG各ステージ）の生成チェック
+4) データ網羅性のチェック（純血種・野生ネコ科・国）
 
 Node.js が無い環境のため quickjs（Python埋め込みJSエンジン）で
 実ファイル js/*.js をそのまま読み込んで実行する。
@@ -50,6 +51,10 @@ def run(ctx):
     ctx.set("_SEED", SEED)
     return ctx.eval("""
 (function(){
+  function svgOk(s) {
+    var x = String(s || '').trim();
+    return x.indexOf('<svg') === 0 && x.lastIndexOf('</svg>') === x.length - 6;
+  }
   var out = {cats: [], svgErrors: [], errors: 0};
   var seed = _SEED;
   for (var i = 0; i < _N; i++) {
@@ -58,10 +63,12 @@ def run(ctx):
       var c = CATGACHA.rollCat(seed);
       var svg = CATGACHA_SVG.render(c);
       var s2 = String(svg || '').trim();
-      if (!s2 || s2.indexOf('<svg') !== 0 || s2.lastIndexOf('</svg>') !== s2.length - 6) {
-        out.svgErrors.push({i: i, name: c.speciesName});
-      }
+      if (!svgOk(svg)) out.svgErrors.push({i: i, name: c.speciesName});
+      var story = c.story;
+      var stageSvg = ['kitten', 'adult', 'senior'].map(function(st){ return svgOk(CATGACHA_SVG.render(c, {stage: st})); });
+      var deathSvg = svgOk(CATGACHA_SVG.render(c, {stage: story[story.length-1].stage, eyes: 'closed'}));
       var html = CATAPP.buildResultHTML(c);
+      var fin = CATAPP.buildFinaleHTML(c);
       out.cats.push({
         klass: c.klass, route: c.route, country: c.region.bucket, regionName: c.region.name,
         speciesKey: c.speciesKey, speciesName: c.speciesName, speciesGroup: c.speciesGroup || null,
@@ -72,7 +79,29 @@ def run(ctx):
         tlCount: c.timeline.length, tlLastKind: c.timeline[c.timeline.length-1].kind,
         tlAsc: c.timeline.every(function(e,idx,arr){ return idx === 0 || e.age >= arr[idx-1].age; }),
         hasCaption: !!c.caption, name: c.name, ageLabel: c.ageLabel,
-        htmlOk: !/undefined|NaN/.test(html), cause: c.deathCause
+        htmlOk: !/undefined|NaN/.test(html), cause: c.deathCause,
+        storyLen: story.length,
+        storyKinds: story.map(function(s){ return s.kind; }),
+        storyAges: story.map(function(s){ return s.age; }),
+        storyStages: story.map(function(s){ return s.stage; }),
+        storyTitles: story.every(function(s){ return !!s.title; }),
+        storyTexts: story.every(function(s){ return !!s.text; }),
+        stageOk: story.every(function(s){
+          var a = s.kind === 'birth' ? 0 : s.age;
+          return s.stage === CATGACHA.stageForAge(a);
+        }),
+        birthAge: story[0].age,
+        deathAge: story[story.length-1].age,
+        choices: story.filter(function(s){ return !!s.choice; }).map(function(s){
+          return {q: s.choice.question, n: s.choice.options.length,
+                  ok: s.choice.options.every(function(o){ return !!o.label && !!o.text; })};
+        }),
+        birthHtml: html,
+        finaleHtml: fin,
+        finaleOk: !/undefined|NaN/.test(fin) && fin.indexOf('享年') >= 0,
+        birthNoAge: html.indexOf('享年') < 0,
+        stageSvg: stageSvg.every(function(x){ return x; }),
+        deathSvg: deathSvg
       });
     } catch (e) {
       out.errors++;
@@ -204,6 +233,42 @@ def main():
     for k, v in Counter(c["rarity"] for c in cats).most_common():
         print(f"  {k:4s} {v:5d} ({pct(v, n)})")
     check(len(set(c["rarity"] for c in cats)) >= 4, "レアリティのばらつきが不足")
+
+    # ---- 猫生ストーリー（体験型UIの中身） ----
+    print("\n--- 猫生ストーリー ---")
+    lens = Counter(c["storyLen"] for c in cats)
+    print("  歩数:", dict(sorted(lens.items())))
+    for k in sorted(lens):
+        print(f"    {k}歩: {lens[k]:5d} ({pct(lens[k], n)})")
+    print("  ステップの種類:", dict(Counter(k for c in cats for k in c["storyKinds"])))
+    print("  年齢ステージ:", dict(Counter(s for c in cats for s in c["storyStages"])))
+    choice_total = sum(len(c["choices"]) for c in cats)
+    choice_cats = sum(1 for c in cats if c["choices"])
+    print(f"  2択イベント: {choice_total}件 / {choice_cats}頭 ({pct(choice_cats, n)} の猫生に入る)")
+    check(all(3 <= c["storyLen"] <= 7 for c in cats), "歩数が3〜7の範囲外")
+    check(all(lens[k] > 0 for k in (3, 4, 5, 6, 7)), "歩数のバリエーション不足(3〜7が揃っていない)")
+    check(all(c["storyKinds"][0] == "birth" for c in cats), "最初が誕生ステップでない")
+    check(all(c["storyKinds"][-1] == "death" for c in cats), "最後が最期ステップでない")
+    check(all(c["birthAge"] == 0 for c in cats), "誕生ステップの年齢が0でない")
+    check(all(abs(c["deathAge"] - c["age"]) < 1e-9 for c in cats), "最期ステップの年齢が寿命と不一致")
+    check(all(c["tlAsc"] for c in cats), "ストーリーの時系列が逆転")
+    check(all(c["stageOk"] for c in cats), "年齢と成長ステージが不一致")
+    check(all(s in ("kitten", "adult", "senior") for c in cats for s in c["storyStages"]), "未知の成長ステージ")
+    check(all(c["storyTitles"] and c["storyTexts"] for c in cats), "タイトル/本文が空のステップ")
+    check(all(c["storyStages"][0] == "kitten" for c in cats), "誕生が子猫ステージでない")
+    check(all(ch["n"] == 2 and ch["ok"] and ch["q"] for c in cats for ch in c["choices"]), "2択イベントの形が不正")
+    check(choice_total > 0 and choice_cats > n * 0.4, "2択イベントがほとんど出ていない")
+    senior_cats = sum(1 for c in cats if "senior" in c["storyStages"])
+    print(f"  シニア猫まで育つ猫生: {senior_cats} ({pct(senior_cats, n)})")
+    check(senior_cats > 0, "シニアステージの猫が1頭もいない")
+
+    # ---- 誕生〜最期の画面 ----
+    print("\n--- 画面HTML ---")
+    check(all(c["birthNoAge"] for c in cats), "誕生画面に享年が出ている")
+    check(all(c["finaleOk"] for c in cats), "フィナーレに享年/確率が揃っていない")
+    check(all(c["stageSvg"] for c in cats), "子猫/成猫/シニアのSVGが崩れている")
+    check(all(c["deathSvg"] for c in cats), "最期(目を閉じた)SVGが崩れている")
+    print("  誕生画面: 享年なし OK / フィナーレ: 享年・確率 OK / 3ステージSVG OK")
 
     # ---- 整合性 ----
     print("\n--- 整合性チェック ---")

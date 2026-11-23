@@ -280,7 +280,22 @@
   /* ---------------- 形 ---------------- */
   const BODY_PATH = 'M160 182 C128 182 110 208 106 246 C101 290 126 328 160 328 C194 328 219 290 214 246 C210 208 192 182 160 182 Z';
 
-  function geom(cat) {
+  /* 年齢ステージ：子猫は頭が大きく体がちいさい、シニアは少し小ぶりで落ち着いた姿 */
+  const STAGE_SCALE = {
+    kitten: { head: 1.26, body: 0.82 },
+    adult: { head: 1.0, body: 1.0 },
+    senior: { head: 0.97, body: 0.96 }
+  };
+  const STAGE_LABEL = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
+
+  function stageOf(age) {
+    const a = Number(age) || 0;
+    if (a < 1) return 'kitten';
+    if (a < 10) return 'adult';
+    return 'senior';
+  }
+
+  function geom(cat, stage) {
     const p = cat.pattern || {};
     const big = p.muzzle === 'wide';
     const earType = p.ears === 'fold' ? 'fold'
@@ -296,9 +311,12 @@
       tall: { l: [[110, 96], [138, 74], [88, 14]], r: [[210, 96], [182, 74], [232, 14]] },
       round: { l: [[118, 92], [140, 78], [112, 56]], r: [[202, 92], [180, 78], [208, 56]] }
     }[earType];
+    const sg = STAGE_SCALE[stage] || STAGE_SCALE.adult;
     return {
-      big, earType, ears,
+      big, earType, ears, stage,
       head: { x: 160, y: 128, r: big ? 60 : 58 },
+      headScale: sg.head,
+      bodyScale: sg.body,
       body: { x: 160, y: 254 },
       fill: p.fill || p.base || '#A87B4A'
     };
@@ -452,11 +470,112 @@
     }
   }
 
+  /* ---------------- 顔（ステージ別） ---------------- */
+  function faceSVG(cat, g, eye1, eye2, outline, fill, stage, closed) {
+    const H = g.head;
+    const p = cat.pattern || {};
+    const ey = H.y + 5;
+
+    const brows = `
+      <path d="M121 ${H.y - 5} q16 -10 32 -2" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".22"/>
+      <path d="M167 ${H.y - 7} q16 -8 32 2" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".22"/>`;
+
+    const whiskers = `
+      <g stroke="${outline}" stroke-width="1.5" opacity=".42" stroke-linecap="round">
+        <path d="M134 ${H.y + 24} L100 ${H.y + 18}"/>
+        <path d="M134 ${H.y + 29} L102 ${H.y + 33}"/>
+        <path d="M186 ${H.y + 24} L220 ${H.y + 18}"/>
+        <path d="M186 ${H.y + 29} L218 ${H.y + 33}"/>
+      </g>`;
+
+    const muzzle = `
+      <ellipse cx="149" cy="${H.y + 28}" rx="10.5" ry="8.5" fill="${shade(fill, 30)}" opacity=".95"/>
+      <ellipse cx="171" cy="${H.y + 28}" rx="10.5" ry="8.5" fill="${shade(fill, 30)}" opacity=".95"/>
+      <path d="M160 ${H.y + 21} l-6 5 q6 5 12 0z" fill="#D98A8A"/>
+      <path d="M160 ${H.y + 27} v4 M160 ${H.y + 31} q-6 5 -10 0 M160 ${H.y + 31} q6 5 10 0" stroke="${outline}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".65"/>
+      ${stage === 'senior' ? `<path d="M150 ${H.y + 36} q10 5 20 0" stroke="${outline}" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".4"/>` : ''}`;
+
+    const tearMark = p.tearMark
+      ? `<path d="M140 ${H.y + 12} q-3 14 -5 20" stroke="${shade(cat.pattern.stripe || '#555', 20)}" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/><path d="M180 ${H.y + 12} q3 14 5 20" stroke="${shade(cat.pattern.stripe || '#555', 20)}" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/>`
+      : '';
+
+    if (closed) {
+      return `
+        <path d="M123 ${ey} q14 12 28 0" stroke="${outline}" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>
+        <path d="M169 ${ey} q14 12 28 0" stroke="${outline}" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>
+        <path d="M151 ${ey + 24} q9 7 18 0" stroke="${outline}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".5"/>
+        ${muzzle}
+        ${whiskers}
+        ${tearMark}`;
+    }
+
+    if (stage === 'kitten') {
+      return `
+        <ellipse cx="137" cy="${ey}" rx="16.5" ry="15.5" fill="#FFFDF8"/>
+        <ellipse cx="183" cy="${ey}" rx="16.5" ry="15.5" fill="#FFFDF8"/>
+        <circle cx="137" cy="${ey}" r="12.6" fill="${eye1}"/>
+        <circle cx="183" cy="${ey}" r="12.6" fill="${eye2}"/>
+        <circle cx="137" cy="${ey + 1}" r="6.6" fill="#171512"/>
+        <circle cx="183" cy="${ey + 1}" r="6.6" fill="#171512"/>
+        <circle cx="132.5" cy="${ey - 4.5}" r="4.4" fill="#FFFFFF" opacity=".95"/>
+        <circle cx="178.5" cy="${ey - 4.5}" r="4.4" fill="#FFFFFF" opacity=".95"/>
+        <circle cx="141.5" cy="${ey + 5.5}" r="1.9" fill="#FFFFFF" opacity=".85"/>
+        <circle cx="187.5" cy="${ey + 5.5}" r="1.9" fill="#FFFFFF" opacity=".85"/>
+        ${brows}
+        <ellipse cx="117" cy="${H.y + 22}" rx="9.5" ry="5.2" fill="#F7A3AD" opacity=".5"/>
+        <ellipse cx="203" cy="${H.y + 22}" rx="9.5" ry="5.2" fill="#F7A3AD" opacity=".5"/>
+        ${muzzle}
+        ${whiskers}
+        ${tearMark}`;
+    }
+
+    if (stage === 'senior') {
+      return `
+        <ellipse cx="137" cy="${ey + 1}" rx="13" ry="11" fill="#FFFDF8"/>
+        <ellipse cx="183" cy="${ey + 1}" rx="13" ry="11" fill="#FFFDF8"/>
+        <ellipse cx="137" cy="${ey + 1}" rx="10" ry="9" fill="${eye1}"/>
+        <ellipse cx="183" cy="${ey + 1}" rx="10" ry="9" fill="${eye2}"/>
+        <ellipse cx="137" cy="${ey + 1}" rx="2.2" ry="6.4" fill="#171512"/>
+        <ellipse cx="183" cy="${ey + 1}" rx="2.2" ry="6.4" fill="#171512"/>
+        <circle cx="133" cy="${ey - 3}" r="2.6" fill="#FFFFFF" opacity=".8"/>
+        <circle cx="179" cy="${ey - 3}" r="2.6" fill="#FFFFFF" opacity=".8"/>
+        <path d="M123 ${ey - 2} q14 -8 28 0" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".45"/>
+        <path d="M169 ${ey - 2} q14 -8 28 0" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".45"/>
+        ${brows}
+        <g fill="#FFFFFF" opacity=".32">
+          <circle cx="128" cy="${H.y + 27}" r="1.3"/><circle cx="133" cy="${H.y + 33}" r="1.1"/>
+          <circle cx="187" cy="${H.y + 27}" r="1.3"/><circle cx="192" cy="${H.y + 33}" r="1.1"/>
+          <circle cx="160" cy="${H.y - 20}" r="1.4"/>
+        </g>
+        ${muzzle}
+        ${whiskers}
+        ${tearMark}`;
+    }
+
+    return `
+      <ellipse cx="137" cy="${ey}" rx="14.5" ry="13" fill="#FFFDF8"/>
+      <ellipse cx="183" cy="${ey}" rx="14.5" ry="13" fill="#FFFDF8"/>
+      <circle cx="137" cy="${ey + 1}" r="${g.big ? 10 : 11.2}" fill="${eye1}"/>
+      <circle cx="183" cy="${ey + 1}" r="${g.big ? 10 : 11.2}" fill="${eye2}"/>
+      ${g.big
+        ? `<circle cx="137" cy="${ey + 1}" r="4.4" fill="#171512"/><circle cx="183" cy="${ey + 1}" r="4.4" fill="#171512"/>`
+        : `<ellipse cx="137" cy="${ey + 1}" rx="2.5" ry="8.2" fill="#171512"/><ellipse cx="183" cy="${ey + 1}" rx="2.5" ry="8.2" fill="#171512"/>`}
+      <circle cx="133" cy="${ey - 5}" r="3" fill="#FFFFFF" opacity=".92"/>
+      <circle cx="179" cy="${ey - 5}" r="3" fill="#FFFFFF" opacity=".92"/>
+      ${brows}
+      ${muzzle}
+      ${whiskers}
+      ${tearMark}`;
+  }
+
   /* ---------------- 本体 ---------------- */
-  function render(cat) {
+  function render(cat, opts) {
+    opts = opts || {};
+    const stage = opts.stage || stageOf(cat.ageYears);
+    const closed = opts.eyes === 'closed';
     const u = 'cg' + (++UID);
     const p = cat.pattern || {};
-    const g = geom(cat);
+    const g = geom(cat, stage);
     const rndSeed = ((cat.seed || 1) ^ 0x9e3779b9) >>> 0;
     const base = p.base || '#A87B4A';
     const stripe = p.stripe || shade(base, -60);
@@ -465,13 +584,16 @@
     const c = { base, stripe, belly, pattern: p.pattern, fill };
     const eye1 = cat.eyeColor || '#D9A73C';
     const eye2 = cat.eyeColor2 || eye1;
-    const round = g.big;
     const scene = cat.scene || (cat.route === 'zoo' ? 'zoo' : cat.klass === 'wild' ? (cat.species && cat.species.scene) || 'forest' : (cat.region && cat.region.outScene) || 'alley_jp');
     const outline = shade(fill, -62);
     const thick = p.thicktail ? 1.7 : 1;
     const bob = p.bobtail || cat.bobtail;
     const pattern = patternLayer(c, mulberry32(rndSeed));
     const H = g.head;
+    const hs = g.headScale;
+    const bs = g.bodyScale;
+    const headT = `translate(${H.x} ${H.y}) scale(${hs}) translate(${-H.x} ${-H.y})`;
+    const bodyT = `translate(160 336) scale(${bs}) translate(-160 -336)`;
 
     const tailColor = p.pattern === 'pointed' ? stripe : base;
     const tailPath = bob
@@ -506,30 +628,12 @@
       <path d="M222 34 l13 -15 l-15 3z" fill="${shade(stripe, 6)}"/>` : '';
 
     const earFill = (p.pattern === 'pointed' || p.pattern === 'mask') ? stripe : fill;
+    const earPink = stage === 'kitten' ? '#F5AEB6' : '#E8A0A6';
 
-    const face = `
-      <ellipse cx="137" cy="${H.y + 5}" rx="14.5" ry="13" fill="#FFFDF8"/>
-      <ellipse cx="183" cy="${H.y + 5}" rx="14.5" ry="13" fill="#FFFDF8"/>
-      <circle cx="137" cy="${H.y + 6}" r="${round ? 10 : 11.2}" fill="${eye1}"/>
-      <circle cx="183" cy="${H.y + 6}" r="${round ? 10 : 11.2}" fill="${eye2}"/>
-      ${round
-        ? `<circle cx="137" cy="${H.y + 6}" r="4.4" fill="#171512"/><circle cx="183" cy="${H.y + 6}" r="4.4" fill="#171512"/>`
-        : `<ellipse cx="137" cy="${H.y + 6}" rx="2.5" ry="8.2" fill="#171512"/><ellipse cx="183" cy="${H.y + 6}" rx="2.5" ry="8.2" fill="#171512"/>`}
-      <circle cx="133" cy="${H.y}" r="3" fill="#FFFFFF" opacity=".92"/>
-      <circle cx="179" cy="${H.y}" r="3" fill="#FFFFFF" opacity=".92"/>
-      <path d="M121 ${H.y - 5} q16 -10 32 -2" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".22"/>
-      <path d="M167 ${H.y - 7} q16 -8 32 2" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".22"/>
-      <ellipse cx="149" cy="${H.y + 28}" rx="10.5" ry="8.5" fill="${shade(fill, 30)}" opacity=".95"/>
-      <ellipse cx="171" cy="${H.y + 28}" rx="10.5" ry="8.5" fill="${shade(fill, 30)}" opacity=".95"/>
-      <path d="M160 ${H.y + 21} l-6 5 q6 5 12 0z" fill="#D98A8A"/>
-      <path d="M160 ${H.y + 27} v4 M160 ${H.y + 31} q-6 5 -10 0 M160 ${H.y + 31} q6 5 10 0" stroke="${outline}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".65"/>
-      ${p.tearMark ? `<path d="M140 ${H.y + 12} q-3 14 -5 20" stroke="${shade(stripe, 20)}" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/><path d="M180 ${H.y + 12} q3 14 5 20" stroke="${shade(stripe, 20)}" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/>` : ''}
-      <g stroke="${outline}" stroke-width="1.5" opacity=".42" stroke-linecap="round">
-        <path d="M134 ${H.y + 24} L100 ${H.y + 18}"/>
-        <path d="M134 ${H.y + 29} L102 ${H.y + 33}"/>
-        <path d="M186 ${H.y + 24} L220 ${H.y + 18}"/>
-        <path d="M186 ${H.y + 29} L218 ${H.y + 33}"/>
-      </g>`;
+    const cowlick = stage === 'kitten' ? `
+      <g stroke="${outline}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".3">
+        <path d="M154 76 q6 -10 14 -6"/><path d="M160 74 q2 -10 10 -10"/>
+      </g>` : '';
 
     const legs = `
       <path d="M128 262 q0 -8 8 -8 h20 q8 0 8 8 v46 q0 12 -12 12 h-12 q-12 0 -12 -12z" fill="url(#${u}-leg)"/>
@@ -540,6 +644,25 @@
       <g stroke="${outline}" stroke-width="1.4" opacity=".22" stroke-linecap="round">
         <path d="M133 314 v6"/><path d="M140 314 v6"/><path d="M147 314 v6"/>
         <path d="M173 314 v6"/><path d="M180 314 v6"/><path d="M187 314 v6"/>
+      </g>`;
+
+    const decor = `
+      <g fill="#FFF6EC" opacity=".62">
+        <g transform="translate(274 302) rotate(-12)">
+          <ellipse cx="0" cy="4" rx="9" ry="7.5"/>
+          <circle cx="-10" cy="-7" r="3.8"/><circle cx="-3.4" cy="-11.5" r="3.8"/>
+          <circle cx="3.4" cy="-11.5" r="3.8"/><circle cx="10" cy="-7" r="3.8"/>
+        </g>
+        <g transform="translate(40 62) rotate(16) scale(.66)">
+          <ellipse cx="0" cy="4" rx="9" ry="7.5"/>
+          <circle cx="-10" cy="-7" r="3.8"/><circle cx="-3.4" cy="-11.5" r="3.8"/>
+          <circle cx="3.4" cy="-11.5" r="3.8"/><circle cx="10" cy="-7" r="3.8"/>
+        </g>
+      </g>
+      <g fill="#FFF6EC" opacity=".8">
+        <path d="M262 58 l3 8 l8 3 l-8 3 l-3 8 l-3-8 l-8-3 l8-3z"/>
+        <path d="M60 246 l2 6 l6 2 l-6 2 l-2 6 l-2-6 l-6-2 l6-2z"/>
+        <circle cx="96" cy="34" r="2.4"/><circle cx="286" cy="170" r="2"/>
       </g>`;
 
     const svg = `
@@ -566,36 +689,46 @@
     </radialGradient>
   </defs>
   ${sceneSVG(scene, u)}
-  <ellipse cx="160" cy="332" rx="86" ry="13" fill="#000" opacity=".15"/>
-  <ellipse cx="160" cy="150" rx="126" ry="126" fill="url(#${u}-glow)" opacity=".5"/>
-  ${mane}
-  ${tailPath}
-  <g clip-path="url(#${u}-body)">
-    <rect width="320" height="360" fill="${fill}"/>
-    ${pattern}
-    <ellipse cx="160" cy="200" rx="58" ry="34" fill="#FFFFFF" opacity=".1"/>
-    <ellipse cx="160" cy="300" rx="70" ry="46" fill="#000" opacity=".07"/>
+  <g clip-path="url(#${u}-frame)">
+    <rect width="320" height="360" fill="#FFF1E4" opacity="${stage === 'kitten' ? 0.3 : 0.2}"/>
   </g>
-  <path d="${BODY_PATH}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
-  ${legs}
-  ${ruff}
-  <ellipse cx="160" cy="188" rx="44" ry="30" fill="${fill}"/>
-  <polygon points="${pts(g.ears.l)}" fill="${earFill}"/>
-  <polygon points="${pts(g.ears.r)}" fill="${earFill}"/>
-  <g clip-path="url(#${u}-head)">
-    <rect width="320" height="360" fill="${fill}"/>
-    ${pattern}
-    <ellipse cx="160" cy="${H.y - 26}" rx="52" ry="28" fill="#FFFFFF" opacity=".08"/>
+  <ellipse cx="160" cy="333" rx="${(86 * bs).toFixed(1)}" ry="${(13 * bs).toFixed(1)}" fill="#000" opacity=".13"/>
+  <ellipse cx="160" cy="150" rx="126" ry="126" fill="url(#${u}-glow)" opacity=".45"/>
+  <g transform="${bodyT}">
+    ${tailPath}
+    <g clip-path="url(#${u}-body)">
+      <rect width="320" height="360" fill="${fill}"/>
+      ${pattern}
+      <ellipse cx="160" cy="200" rx="58" ry="34" fill="#FFFFFF" opacity=".1"/>
+      <ellipse cx="160" cy="300" rx="70" ry="46" fill="#000" opacity=".07"/>
+    </g>
+    <path d="${BODY_PATH}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
+    ${legs}
+    ${ruff}
+    <ellipse cx="160" cy="192" rx="46" ry="34" fill="${fill}"/>
   </g>
-  <polygon points="${pts(g.ears.l)}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
-  <polygon points="${pts(g.ears.r)}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
-  <polygon points="${pts(inset(g.ears.l, 0.58))}" fill="#E8A0A6" opacity=".85"/>
-  <polygon points="${pts(inset(g.ears.r, 0.58))}" fill="#E8A0A6" opacity=".85"/>
-  ${cheekRuff}
-  ${tufts}
-  <circle cx="${H.x}" cy="${H.y}" r="${H.r}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
-  ${face}
-  ${p.hairless ? `<g stroke="${shade(fill, 14)}" stroke-width="1.3" opacity=".45"><path d="M134 118 q10-8 18-3"/><path d="M168 115 q10-6 18 3"/><path d="M124 240 q8 10 0 20"/></g>` : ''}
+  <g transform="${headT}">
+    ${mane}
+    <polygon points="${pts(g.ears.l)}" fill="${earFill}"/>
+    <polygon points="${pts(g.ears.r)}" fill="${earFill}"/>
+    <g clip-path="url(#${u}-head)">
+      <rect width="320" height="360" fill="${fill}"/>
+      ${pattern}
+      <ellipse cx="160" cy="${H.y - 26}" rx="52" ry="28" fill="#FFFFFF" opacity=".08"/>
+    </g>
+    <polygon points="${pts(g.ears.l)}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
+    <polygon points="${pts(g.ears.r)}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
+    <polygon points="${pts(inset(g.ears.l, 0.58))}" fill="${earPink}" opacity=".85"/>
+    <polygon points="${pts(inset(g.ears.r, 0.58))}" fill="${earPink}" opacity=".85"/>
+    ${cheekRuff}
+    ${tufts}
+    ${cowlick}
+    <circle cx="${H.x}" cy="${H.y}" r="${H.r}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
+    ${faceSVG(cat, g, eye1, eye2, outline, fill, stage, closed)}
+    ${p.hairless ? `<g stroke="${shade(fill, 14)}" stroke-width="1.3" opacity=".45"><path d="M134 118 q10-8 18-3"/><path d="M168 115 q10-6 18 3"/><path d="M124 240 q8 10 0 20"/></g>` : ''}
+  </g>
+  <rect x="7" y="7" width="306" height="346" rx="22" fill="none" stroke="#FFF6EC" stroke-width="2.5" stroke-dasharray="7 10" opacity=".5"/>
+  ${decor}
 </svg>`;
     return svg.replace(/\n\s+/g, '\n');
   }
@@ -604,7 +737,7 @@
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   }
 
-  const api = { render, sceneSVG };
+  const api = { render, sceneSVG, stageOf, STAGE_LABEL };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.CATGACHA_SVG = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
