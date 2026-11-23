@@ -42,6 +42,20 @@
     ctx.closePath();
   }
 
+  /* 古い Safari でも楕円を描けるように（ellipse が無ければ arc で代用） */
+  function ellipsePath(ctx, cx, cy, rx, ry, rot, a0, a1) {
+    if (typeof ctx.ellipse === 'function') {
+      ctx.ellipse(cx, cy, rx, ry, rot || 0, a0 || 0, a1 == null ? Math.PI * 2 : a1);
+      return;
+    }
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (rot) ctx.rotate(rot);
+    ctx.scale(1, ry / Math.max(1, rx));
+    ctx.arc(0, 0, rx, a0 || 0, a1 == null ? Math.PI * 2 : a1);
+    ctx.restore();
+  }
+
   function fillRound(ctx, x, y, w, h, r, fill) {
     roundRect(ctx, x, y, w, h, r);
     ctx.fillStyle = fill;
@@ -191,15 +205,15 @@
     if (data.maneki) {
       ctx.save();
       ctx.beginPath();
-      ctx.ellipse(cx, top + size * 0.965, size * 0.40, size * 0.075, 0, 0, Math.PI * 2);
+      ellipsePath(ctx, cx, top + size * 0.965, size * 0.40, size * 0.075, 0, 0, Math.PI * 2);
       ctx.fillStyle = '#C6304B';
       ctx.fill();
       ctx.beginPath();
-      ctx.ellipse(cx, top + size * 0.945, size * 0.34, size * 0.05, 0, 0, Math.PI * 2);
+      ellipsePath(ctx, cx, top + size * 0.945, size * 0.34, size * 0.05, 0, 0, Math.PI * 2);
       ctx.fillStyle = '#e05a72';
       ctx.fill();
       ctx.beginPath();
-      ctx.ellipse(x + size * 0.80, top + size * 0.86, size * 0.085, size * 0.055, -0.2, 0, Math.PI * 2);
+      ellipsePath(ctx, x + size * 0.80, top + size * 0.86, size * 0.085, size * 0.055, -0.2, 0, Math.PI * 2);
       ctx.fillStyle = '#F7D060';
       ctx.fill();
       ctx.strokeStyle = '#B8862A';
@@ -250,12 +264,12 @@
       ctx.rotate((c.r || 0) * Math.PI / 180);
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.ellipse(0, 0, cw / 2, cw * 0.23, 0, 0.10 * Math.PI, 0.90 * Math.PI);
+      ellipsePath(ctx, 0, 0, cw / 2, cw * 0.23, 0, 0.10 * Math.PI, 0.90 * Math.PI);
       ctx.strokeStyle = '#F1566F';
       ctx.lineWidth = Math.max(7, cw * 0.085);
       ctx.stroke();
       ctx.beginPath();
-      ctx.ellipse(0, 0, cw / 2, cw * 0.23, 0, 0.10 * Math.PI, 0.90 * Math.PI);
+      ellipsePath(ctx, 0, 0, cw / 2, cw * 0.23, 0, 0.10 * Math.PI, 0.90 * Math.PI);
       ctx.strokeStyle = 'rgba(255,255,255,.45)';
       ctx.lineWidth = Math.max(2, cw * 0.022);
       ctx.stroke();
