@@ -757,6 +757,31 @@
     return peak;
   }
 
+  /* ---------- ステータスと運命の連動 ----------
+     ❤️たいりょく<=20 → ピンチ（ドキドキ演出・事故リスクUP）
+     🐟おなか<=20     → 空腹（体調を崩しやすい・小さな空腹サイン）
+     🍀うん>=70       → 幸運（拾われやすい・事故回避・猫又/招き猫ルートUP） */
+  const FATE = { PINCH: 20, HUNGRY: 20, LUCKY: 70 };
+
+  function fateAt(cat, idx) {
+    const s = statsAt(cat, idx);
+    const pinch = s.energy <= FATE.PINCH;
+    const hungry = s.food <= FATE.HUNGRY;
+    const lucky = s.luck >= FATE.LUCKY;
+    return {
+      energy: s.energy, food: s.food, luck: s.luck,
+      pinch: pinch, hungry: hungry, lucky: lucky,
+      tone: pinch ? 'pinch' : hungry ? 'hungry' : lucky ? 'lucky' : ''
+    };
+  }
+
+  /* ピンチ・空腹・幸運が、2択の事故リスクに効く倍率。
+     幸運は事故を避け、空腹は体力が落ちて危険に弱くなる。 */
+  function fateRiskFactor(cat, idx) {
+    const f = fateAt(cat, idx);
+    return (f.hungry ? 1.3 : 1) * (f.lucky ? 0.72 : 1);
+  }
+
   /* ---------- 選択イベント ----------
      cozy = ちょっとした日常の2択（小さなステータス変化）
      fate = 猫生の分かれ道（寿命・境遇・ボス猫への道が変わる） */
@@ -995,7 +1020,7 @@
     if (cat.klass === 'wild' || cat.special) return false;
     if ((Number(cat.ageYears) || 0) < 15) return false;
     const luck = baseStats(cat).luck;
-    const p = luck >= 75 ? 0.03 : 0.015;
+    const p = luck >= FATE.LUCKY ? 0.036 : luck >= 60 ? 0.022 : 0.015;
     return chance(p, rng);
   }
 
@@ -1086,7 +1111,8 @@
     const at = cat.adoptIndex == null ? 0 : cat.adoptIndex;
     const luck = statsAt(cat, at).luck;
     if (luck < 50) return false;
-    return chance(0.025, rng);
+    /* 🍀幸運の子は、お店の看板猫にも選ばれやすい */
+    return chance(luck >= FATE.LUCKY ? 0.042 : 0.025, rng);
   }
 
   function decorateManeki(cat, rng) {
@@ -1120,6 +1146,65 @@
     }
     cat.deathCause = 'maneki';
     cat.caption = '商店街の看板猫。右手を上げて、今日もお客さんを呼んでいる。';
+  }
+
+  /* 空腹が長く続いた子の最期（体調を崩しやすい） */
+  const HUNGER_DEATHS = {
+    home: 'おなかが満ちない日が続いて体力が落ち、そこに病気が重なった。家族が気づいた時には、もう立ち上がれなかった。',
+    free: '食べものが足りない日が続いて痩せていき、最後は病気に耐えられなかった。',
+    wild: '獲物の少ない季節が長く続き、弱ったところを病に倒れた。',
+    zoo: '食欲が落ちた日が続き、体調を崩してそのまま回復しなかった。',
+    default: 'おなかが足りない日が続き、体調を崩したまま回復しなかった。'
+  };
+
+  /* 空腹の歩みの割合。多すぎる子は、寿命が少しだけ縮む（体調を崩しやすい）。 */
+  function hungerRatio(cat) {
+    const story = (cat && cat.story) || [];
+    let n = 0, hungry = 0;
+    for (let i = 0; i < story.length; i++) {
+      if (story[i].kind === 'death') continue;
+      const st = story[i].stats || statsAt(cat, i);
+      n += 1;
+      if (st.food <= FATE.HUNGRY) hungry += 1;
+    }
+    return n ? hungry / n : 0;
+  }
+
+  function hungerToll(cat, rng) {
+    if (!cat || cat.klass === 'wild' || cat.special) return false;
+    if (cat.nekomata || cat.maneki) return false;
+    const age = Number(cat.ageYears) || 0;
+    if (age < 3) return false;
+    const ratio = hungerRatio(cat);
+    if (ratio < 0.30) return false;
+    const p = clamp(0.12 + (ratio - 0.30) * 0.8, 0.12, 0.36);
+    if (!chance(p, rng)) return false;
+    const target = Math.max(2, Math.round(age * (1 - (0.12 + rng() * 0.12)) * 100) / 100);
+    if (target >= age - 0.1) return false;
+    const story = cat.story;
+    const keep = [];
+    for (let i = 0; i < story.length; i++) {
+      const s = story[i];
+      if (s.kind === 'birth' || s.age < target - 0.001) keep.push(s);
+    }
+    if (keep.length < 5) return false;
+    const key = cat.klass === 'wild' ? 'wild'
+      : cat.route === 'zoo' ? 'zoo'
+      : (cat.adoptIndex != null || cat.route === 'owned' || cat.route === 'purebred') ? 'home' : 'free';
+    cat.ageYears = target;
+    cat.ageLabel = ageLabel(target);
+    cat.deathCause = 'illness';
+    cat.hungerWeak = true;
+    cat.hungerRatio = Math.round(ratio * 100) / 100;
+    keep.push({
+      kind: 'death', age: target, ageLabel: ageLabelFine(target), stage: stageForAge(target),
+      season: seasonFor(cat, target), title: '最期', cause: 'illness',
+      text: pick(HUNGER_DEATHS[key] || HUNGER_DEATHS.default, rng)
+    });
+    cat.story = keep;
+    applyBaseStats(cat);
+    cat.caption = buildCaption(cat, rng);
+    return true;
   }
 
   const PINCH_DEATHS = {
@@ -1265,7 +1350,9 @@
     }
     if (fx.risk) {
       const r = statRng(cat, 0x7f4a + idx * 31 + optIdx)();
-      if (r < fx.risk) {
+      /* 🍀幸運は事故を避け、🐟空腹は危険に弱い（ピンチ❤️は演出で知らせる） */
+      const risk = clamp(fx.risk * fateRiskFactor(cat, idx), 0.01, 0.9);
+      if (r < risk) {
         killAt(cat, idx);
         out.died = true;
         out.headlines = ['😿 ピンチに巻き込まれた…'];
@@ -1497,7 +1584,9 @@
     const route = cat.route;
     if (route === 'owned' && cat.shelterBorn) return chance(0.8, rng);
     if (route !== 'street' && route !== 'community' && route !== 'feral') return false;
-    const p = route === 'community' ? 0.42 : route === 'street' ? 0.30 : 0.10;
+    let p = route === 'community' ? 0.42 : route === 'street' ? 0.30 : 0.10;
+    /* 🍀幸運の子は、人に見つけてもらいやすい */
+    if (baseStats(cat).luck >= FATE.LUCKY) p = Math.min(0.92, p * 1.18);
     return chance(p, rng);
   }
 
@@ -1599,6 +1688,9 @@
 
     cat.story = steps;
     applyBaseStats(cat);
+
+    /* 🐟空腹が長く続いた子は、体調を崩しやすい（寿命が少し縮む） */
+    if (hungerToll(cat, statRng(cat, 0x4b17))) return cat.story;
 
     /* 超レア：🍀運の高い子が、お店に拾われて招き猫になる */
     if (manekiRoll(cat, rng)) decorateManeki(cat, rng);
@@ -1857,7 +1949,7 @@
     statusOf, rarityPoints, bossAt, STATUS_VIEW, IUCN_JP,
     /* 年をとる・分岐・やり込み */
     AGE_TICKS, NEKOMATA_TICKS, ageTicks, ageScalePercent, MILESTONES, milestoneAt, milestonesPassed,
-    statsAt, peakStats, baseStats, statChips,
+    statsAt, peakStats, baseStats, statChips, FATE, fateAt, fateRiskFactor, hungerRatio, hungerToll,
     CHOICE_EVENTS, applyChoice, extendLife, insertAdopt, killAt, statRng,
     ACHIEVEMENTS, achievementDef, evaluateAchievements
   };

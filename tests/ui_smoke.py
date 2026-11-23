@@ -33,6 +33,8 @@ function El(id, cls){
     contains: function(c){ return !!set[c]; }
   };
 }
+El.prototype.setAttribute = function(k, v){ this['__attr_' + k] = String(v); };
+El.prototype.getAttribute = function(k){ return this['__attr_' + k] != null ? this['__attr_' + k] : null; };
 El.prototype.addEventListener = function(ev, fn){
   __handlers[this.id + ':' + ev] = __handlers[this.id + ':' + ev] || [];
   __handlers[this.id + ':' + ev].push(fn);
@@ -95,6 +97,57 @@ var localStorage = {
   getItem: function(k){ return this._v[k] || null; },
   setItem: function(k, v){ this._v[k] = v; }
 };
+
+/* Canvas スタブ（📸 猫生カード） */
+var __canvas = [];
+document.createElement = function(tag){
+  if (String(tag).toLowerCase() !== 'canvas') return { style: {}, appendChild: function(){}, setAttribute: function(){} };
+  var calls = {texts: [], ops: 0, images: 0};
+  var grad = {addColorStop: function(){}};
+  var g = {
+    font: '', fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1,
+    textAlign: '', textBaseline: '', globalCompositeOperation: '', lineCap: '',
+    shadowColor: '', shadowBlur: 0, shadowOffsetY: 0,
+    clearRect: function(){ calls.ops++; }, fillRect: function(){ calls.ops++; }, strokeRect: function(){ calls.ops++; },
+    beginPath: function(){}, closePath: function(){}, moveTo: function(){}, lineTo: function(){},
+    quadraticCurveTo: function(){}, bezierCurveTo: function(){}, arc: function(){}, ellipse: function(){},
+    rect: function(){}, fill: function(){}, stroke: function(){}, save: function(){}, restore: function(){},
+    translate: function(){}, rotate: function(){}, scale: function(){}, clip: function(){}, setLineDash: function(){},
+    fillText: function(t){ calls.texts.push(String(t)); }, strokeText: function(t){ calls.texts.push(String(t)); },
+    drawImage: function(){ calls.images++; },
+    measureText: function(t){ return { width: String(t).length * 16 }; },
+    createLinearGradient: function(){ return grad; }, createRadialGradient: function(){ return grad; }
+  };
+  var c = {
+    width: 0, height: 0, calls: calls, getContext: function(){ return g; },
+    toDataURL: function(){ return 'data:image/png;base64,' + 'iVBORw0KGgo'.repeat(80); }
+  };
+  __canvas.push(c);
+  return c;
+};
+function Image(){ this.width = 512; this.height = 512; this._src = ''; this.onload = null; this.onerror = null; }
+Object.defineProperty(Image.prototype, 'src', {
+  set: function(v){ this._src = v; var self = this; if (this.onload) setTimeout(function(){ self.onload(); }, 0); },
+  get: function(){ return this._src; }
+});
+window.Image = Image;
+var navigator = { canShare: function(){ return false; }, share: function(){ return Promise.resolve(); } };
+var __audio = { contexts: 0, oscillators: 0, resumes: 0 };
+function AudioContextStub(){
+  this.state = 'suspended'; this.currentTime = 0; this.destination = {}; __audio.contexts++;
+  var self = this;
+  this.resume = function(){ self.state = 'running'; __audio.resumes++; };
+  this.createGain = function(){
+    return { gain: { value: 0, setValueAtTime: function(){}, exponentialRampToValueAtTime: function(){} }, connect: function(){} };
+  };
+  this.createOscillator = function(){
+    __audio.oscillators++;
+    return { type: 'sine',
+      frequency: { setValueAtTime: function(){}, exponentialRampToValueAtTime: function(){}, linearRampToValueAtTime: function(){} },
+      connect: function(){}, start: function(){}, stop: function(){} };
+  };
+}
+window.AudioContext = AudioContextStub;
 """
 
 failures = []
@@ -110,7 +163,7 @@ def check(cond, msg):
 def main():
     ctx = quickjs.Context()
     ctx.eval(DOM_STUB)
-    for f in JS_FILES + ["js/app.js"]:
+    for f in JS_FILES + ["js/catcard.js", "js/sound.js", "js/app.js"]:
         ctx.eval((ROOT / f).read_text(encoding="utf-8"))
 
     # 要素IDが index.html と一致しているか
@@ -545,6 +598,146 @@ def main():
         print("[NG] シェアURLが不正")
         return 1
 
+    # --- 音のON/OFF（🔊/🔇） ---
+    print("\n--- 音（🔊/🔇） ---")
+    if not ctx.eval("CATSOUND.isOn()"):
+        print("[NG] 音が初期状態でONになっていない")
+        return 1
+    if ctx.eval("document.getElementById('soundIcon').textContent") != "🔊":
+        print("[NG] 音ボタンの初期アイコンが🔊でない")
+        return 1
+    ctx.eval("__handlers['soundBtn:click'][0]()")
+    if ctx.eval("CATSOUND.isOn()"):
+        print("[NG] 音をOFFにできない")
+        return 1
+    if ctx.eval("document.getElementById('soundIcon').textContent") != "🔇":
+        print("[NG] 音OFFのアイコンが🔇でない")
+        return 1
+    if ctx.eval("localStorage.getItem('catgacha.sound.v1')") != "0":
+        print("[NG] 音OFFが保存されていない")
+        return 1
+    osc_off = ctx.eval("__audio.oscillators")
+    ctx.eval("CATSOUND.play('tap')")
+    if ctx.eval("__audio.oscillators") != osc_off:
+        print("[NG] 音OFFなのに音が鳴っている")
+        return 1
+    ctx.eval("__handlers['soundBtn:click'][0]()")
+    if not ctx.eval("CATSOUND.isOn()") or ctx.eval("document.getElementById('soundIcon').textContent") != "🔊":
+        print("[NG] 音をONに戻せない")
+        return 1
+    if ctx.eval("localStorage.getItem('catgacha.sound.v1')") != "1":
+        print("[NG] 音ONが保存されていない")
+        return 1
+    taps_osc = ctx.eval("__audio.oscillators")
+    ctx.eval("__handlers['catActor:click'][0]()")
+    if ctx.eval("__audio.oscillators") <= taps_osc:
+        print("[NG] 猫タップで音が鳴らない")
+        return 1
+    if ctx.eval("__audio.resumes") < 1:
+        print("[NG] ユーザー操作で AudioContext.resume() していない")
+        return 1
+    snd_osc, snd_res = ctx.eval("__audio.oscillators"), ctx.eval("__audio.resumes")
+    snd_saved = ctx.eval("localStorage.getItem('catgacha.sound.v1')")
+    print(f"  トグル OK / 出力 {snd_osc}音 / resume {snd_res}回 / 保存値 {snd_saved}")
+
+    # --- 📸 猫生カード（フィナーレ） ---
+    print("\n--- 📸 猫生カード ---")
+    ctx.eval("__handlers['cardBtn:click'][0]()")
+    ctx.eval("__runTimers(50);")
+    if ctx.eval("document.getElementById('cardModal').hidden"):
+        print("[NG] カードのプレビューが開かない")
+        return 1
+    card_src = ctx.eval("document.getElementById('cardImg').src")
+    card_href = ctx.eval("document.getElementById('cardDownload').getAttribute('href')")
+    card_dl = ctx.eval("document.getElementById('cardDownload').getAttribute('download')")
+    print("  dataURL:", card_src[:34], "... /", len(card_src or ""), "文字 / 保存名:", card_dl)
+    if not card_src.startswith("data:image/png;base64,"):
+        print("[NG] カードがPNG dataURLでない")
+        return 1
+    if not (card_href or "").startswith("data:image/png;base64,"):
+        print("[NG] ダウンロードリンクに画像が入っていない")
+        return 1
+    if not (card_dl or "").endswith(".png"):
+        print("[NG] ダウンロード名が .png でない")
+        return 1
+    if "長押しで保存もOK" not in html:
+        print("[NG] プレビューに「長押しで保存もOK」の案内がない")
+        return 1
+    if ctx.eval("CATAPP.state.current.name") not in (ctx.eval("document.getElementById('cardImg').alt") or ""):
+        print("[NG] カード画像の alt に名前がない")
+        return 1
+    ctx.eval("__handlers['closeCard:click'][0]()")
+    if not ctx.eval("document.getElementById('cardModal').hidden"):
+        print("[NG] カードを閉じられない")
+        return 1
+    print("  プレビュー・保存リンク・長押し案内 OK")
+
+    # --- ❤️ピンチ / 🐟空腹 / 🍀幸運の演出 ---
+    print("\n--- 運命連動の演出 ---")
+    pinch = json.loads(ctx.eval(r"""
+      (function(){
+        function find(pred){
+          for (var s = 1; s <= 6000; s++) {
+            var c = CATGACHA.rollCat(s * 7919);
+            for (var i = 1; i < c.story.length; i++) {
+              if (c.story[i].kind === 'death') continue;
+              var f = CATGACHA.fateAt(c, i);
+              if (pred(f)) return {c: c, i: i};
+            }
+          }
+          return null;
+        }
+        var p = find(function(f){ return f.pinch; });
+        var h = find(function(f){ return !f.pinch && f.hungry; });
+        var l = find(function(f){ return !f.pinch && !f.hungry && f.lucky; });
+        if (!p || !h || !l) throw new Error('運命の猫が見つからない');
+        var out = {};
+        CATAPP.start(p.c); CATAPP.state.started = true; CATAPP.state.step = p.i; CATAPP.render();
+        out.pinch = {
+          cls: document.getElementById('catStage').classList.contains('is-pinch'),
+          alert: document.getElementById('stageAlert').textContent,
+          hidden: document.getElementById('stageAlert').hidden,
+          stats: document.getElementById('stats').innerHTML,
+          osc: __audio.oscillators
+        };
+        CATAPP.start(h.c); CATAPP.state.started = true; CATAPP.state.step = h.i; CATAPP.render();
+        out.hungry = {
+          pinch: document.getElementById('catStage').classList.contains('is-pinch'),
+          alert: document.getElementById('stageAlert').textContent,
+          stats: document.getElementById('stats').innerHTML
+        };
+        CATAPP.start(l.c); CATAPP.state.started = true; CATAPP.state.step = l.i; CATAPP.render();
+        out.lucky = {
+          alert: document.getElementById('stageAlert').textContent,
+          stats: document.getElementById('stats').innerHTML
+        };
+        return JSON.stringify(out);
+      })()
+    """))
+    print("  ピンチ:", pinch["pinch"]["alert"], "/ 空腹:", pinch["hungry"]["alert"], "/ 幸運:", pinch["lucky"]["alert"])
+    if not pinch["pinch"]["cls"] or "ピンチ" not in pinch["pinch"]["alert"]:
+        print("[NG] ピンチの赤い脈打つ演出が出ない")
+        return 1
+    if pinch["pinch"]["hidden"]:
+        print("[NG] ピンチの小さな表示が隠れている")
+        return 1
+    if "is-pinch" not in pinch["pinch"]["stats"] or 'data-flag="ピンチ"' not in pinch["pinch"]["stats"]:
+        print("[NG] たいりょくのピンチ表示がない")
+        return 1
+    if pinch["hungry"]["pinch"] or "おなかペコペコ" not in pinch["hungry"]["alert"]:
+        print("[NG] 空腹サインが正しく出ない:", pinch["hungry"]["alert"])
+        return 1
+    if 'data-flag="空腹"' not in pinch["hungry"]["stats"]:
+        print("[NG] おなかの空腹表示がない")
+        return 1
+    if "幸運" not in pinch["lucky"]["alert"] or 'data-flag="幸運"' not in pinch["lucky"]["stats"]:
+        print("[NG] 幸運の表示が出ない")
+        return 1
+    if pinch["pinch"]["osc"] <= 0:
+        print("[NG] ピンチでアラート音が鳴らない")
+        return 1
+    print("  ピンチ演出・空腹サイン・幸運表示・アラート音 OK")
+
     # --- 図鑑 ---
     ctx.eval("__handlers['openDex:click'][0]()")
     dex_html = ctx.eval("document.getElementById('dexBody').innerHTML")
@@ -608,7 +801,7 @@ def main():
     # カードをタップ（dexBody のクリック委譲）して詳細へ
     ctx.eval("""
       var __hit = { getAttribute: function(k){ return k === 'data-album' ? %s : null; },
-        closest: function(sel){ return sel.indexOf('back') >= 0 ? null : __hit; } };
+        closest: function(sel){ return sel === '[data-album]' ? __hit : null; } };
       __handlers['dexBody:click'][0]({target: __hit});
     """ % json.dumps(dex_albums["id"]))
     det = ctx.eval("document.getElementById('dexBody').innerHTML")
@@ -655,7 +848,7 @@ def main():
         return 1
     ctx.eval("""
       var __jump = { getAttribute: function(k){ return k === 'data-album' ? %s : null; },
-        closest: function(sel){ return sel.indexOf('back') >= 0 ? null : __jump; } };
+        closest: function(sel){ return sel === '[data-album]' ? __jump : null; } };
       __handlers['dexBody:click'][0]({target: __jump});
     """ % json.dumps(dex_albums["id"]))
     if ctx.eval("CATAPP.state.tab") != "albums" or ctx.eval("CATAPP.state.albumId") != dex_albums["id"]:
@@ -665,6 +858,83 @@ def main():
         print("[NG] 最近の猫生からの遷移先が詳細でない")
         return 1
     print("最近の猫生 → 詳細: OK")
+
+    # --- ⭐お気に入り（一覧・詳細・絞り込み） ---
+    print("\n--- ⭐お気に入り（UI） ---")
+    ctx.eval("CATAPP.state.albumId=null; CATAPP.state.albumFilter='all'; CATAPP.state.tab='albums'; CATAPP.renderDex();")
+    ctx.eval("""
+      var __fav = { getAttribute: function(k){ return k === 'data-fav' ? %s : null; },
+        closest: function(sel){ return sel === '[data-fav]' ? __fav : null; } };
+      __handlers['dexBody:click'][0]({target: __fav});
+    """ % json.dumps(dex_albums["id"]))
+    if not ctx.eval("CATAPP.state.dex.albums[0].fav"):
+        print("[NG] 一覧の⭐でお気に入りにできない")
+        return 1
+    fav_list = ctx.eval("document.getElementById('dexBody').innerHTML")
+    if "album-star is-on" not in fav_list or "★" not in fav_list:
+        print("[NG] お気に入りの★が一覧に出ない")
+        return 1
+    if '"fav":true' not in (ctx.eval("localStorage.getItem('catgacha.dex.v1')") or ""):
+        print("[NG] お気に入りが保存されていない")
+        return 1
+    # ⭐だけの絞り込み
+    ctx.eval("""
+      var __flt = { getAttribute: function(k){ return k === 'data-album-filter' ? 'fav' : null; },
+        closest: function(sel){ return sel === '[data-album-filter]' ? __flt : null; } };
+      __handlers['dexBody:click'][0]({target: __flt});
+    """)
+    if ctx.eval("CATAPP.state.albumFilter") != "fav":
+        print("[NG] ⭐お気に入りの絞り込みが切り替わらない")
+        return 1
+    fav_only = ctx.eval("document.getElementById('dexBody').innerHTML")
+    if fav_only.count('data-album="') != 1 or "is-active" not in fav_only:
+        print("[NG] ⭐だけの一覧が正しくない")
+        return 1
+    print("  一覧の⭐ → 保存 → ⭐だけの絞り込み OK")
+    # すべてに戻して詳細へ
+    ctx.eval("""
+      var __all = { getAttribute: function(k){ return k === 'data-album-filter' ? 'all' : null; },
+        closest: function(sel){ return sel === '[data-album-filter]' ? __all : null; } };
+      __handlers['dexBody:click'][0]({target: __all});
+    """)
+    if ctx.eval("CATAPP.state.albumFilter") != "all":
+        print("[NG] すべての一覧に戻せない")
+        return 1
+    ctx.eval("CATAPP.openAlbum(%s)" % json.dumps(dex_albums["id"]))
+    det_fav = ctx.eval("document.getElementById('dexBody').innerHTML")
+    for need in ("★ お気に入り", "カード画像を保存", "data-card=", "𝕏 シェア"):
+        if need not in det_fav:
+            print("[NG] 詳細に⭐/カード/シェアのボタンがない:", need)
+            return 1
+    # 詳細から猫生カード
+    ctx.eval("__canvas.length = 0;")
+    ctx.eval("""
+      var __cardBtn = { getAttribute: function(k){ return k === 'data-card' ? %s : null; },
+        closest: function(sel){ return sel === '[data-card]' ? __cardBtn : null; } };
+      __handlers['dexBody:click'][0]({target: __cardBtn});
+      __runTimers(50);
+    """ % json.dumps(dex_albums["id"]))
+    if ctx.eval("document.getElementById('cardModal').hidden"):
+        print("[NG] 詳細からカード画像を開けない")
+        return 1
+    if not (ctx.eval("document.getElementById('cardImg').src") or "").startswith("data:image/png;base64,"):
+        print("[NG] 詳細のカードがPNGでない")
+        return 1
+    ctx.eval("__handlers['closeCard:click'][0]()")
+    print("  詳細からカード画像を生成 OK")
+    # 詳細の⭐を解除
+    ctx.eval("""
+      var __fav2 = { getAttribute: function(k){ return k === 'data-fav' ? %s : null; },
+        closest: function(sel){ return sel === '[data-fav]' ? __fav2 : null; } };
+      __handlers['dexBody:click'][0]({target: __fav2});
+    """ % json.dumps(dex_albums["id"]))
+    if ctx.eval("CATAPP.state.dex.albums[0].fav"):
+        print("[NG] 詳細の⭐を外せない")
+        return 1
+    if "☆ お気に入り" not in ctx.eval("document.getElementById('dexBody').innerHTML"):
+        print("[NG] ⭐解除が詳細に反映されない")
+        return 1
+    print("  詳細の⭐解除 OK")
     ctx.eval("CATAPP.state.albumId=null; CATAPP.state.tab='species'; __handlers['closeDex:click'][0]()")
 
     # localStorage 保存（実績も入っている）
@@ -871,7 +1141,7 @@ def main():
         "ach": {"first": 1},
     }
     ctx2.eval("localStorage.setItem('catgacha.dex.v1', " + json.dumps(json.dumps(legacy_dex, ensure_ascii=False)) + ");")
-    for f in JS_FILES + ["js/app.js"]:
+    for f in JS_FILES + ["js/catcard.js", "js/sound.js", "js/app.js"]:
         ctx2.eval((ROOT / f).read_text(encoding="utf-8"))
     ctx2.eval("CATAPP.state.tab='albums'; __handlers['openDex:click'][0]()")
     old_list = ctx2.eval("document.getElementById('dexBody').innerHTML")

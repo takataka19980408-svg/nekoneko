@@ -9,13 +9,16 @@
   const D = root.CATGACHA_DATA;
   const E = root.CATGACHA;
   const A = root.CATART;
+  const SND = root.CATSOUND || { play: function () { return false; }, isOn: function () { return false; }, setOn: function () { return false; }, toggle: function () { return false; }, ensure: function () { return null; } };
   const KEY = 'catgacha.dex.v1';
 
   const RARITY_JP = { N: 'ノーマル', R: 'レア', SR: 'スーパーレア', SSR: 'ダブルレア', UR: 'ウルトラレア' };
   const STAGE_JP = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
 
-  /* 過去の猫生（フル記録）の保持数。1匹あたり数〜20KBなので、40匹で数100KBに収まる。 */
+  /* 過去の猫生（フル記録）の保持数。1匹あたり数〜20KBなので、40匹で数100KBに収まる。
+     ⭐お気に入りは別枠で保護する（最大20匹）。 */
   const ALBUM_MAX = 40;
+  const FAV_MAX = 20;
   const CAUSE_JP = {
     early: '早すぎる別れ', illness: '病気', accident: '事故', natural: '大往生',
     starve: '飢え', fight: 'ケンカ', human: '人の手', pinch: '不慮の事故',
@@ -53,44 +56,79 @@
       || e.code === 22 || e.code === 1014 || /quota/i.test(msg);
   }
 
-  /* 保存。容量が溢れたら「古い猫生の記録」から削って再保存する。 */
+  /* 保存。容量が溢れたら「古い猫生の記録」から削って再保存する。
+     ⭐お気に入りは最後まで残す（先に通常の記録から削る）。 */
+  function lastNonFavIndex(list) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i] && !list[i].fav) return i;
+    }
+    return -1;
+  }
+
   function saveDex(dex) {
     if (!dex || !root.localStorage) return dex;
     if (!Array.isArray(dex.albums)) dex.albums = [];
     if (!Array.isArray(dex.history)) dex.history = [];
     let guard = 0;
-    let step = 0;
-    while (guard++ < 200) {
+    while (guard++ < 300) {
       try {
         root.localStorage.setItem(KEY, JSON.stringify(dex));
         return dex;
       } catch (e) {
         if (!isQuotaError(e)) return dex;   /* プライベートモード等は保存をあきらめる */
-        if (dex.albums.length > 1) { dex.albums.pop(); continue; }        /* 古い猫生から削る */
-        if (dex.albums.length === 1 && step === 0) {
-          /* 最後の1匹は残し、途中の歩みを間引く（生まれた日と最期は残す） */
-          step = 1;
-          const a = dex.albums[0];
+        const idx = lastNonFavIndex(dex.albums);
+        if (idx >= 0 && dex.albums.length > 1) { dex.albums.splice(idx, 1); continue; }
+        if (dex.albums.length) {
+          /* ⭐しか残っていない／1匹だけのときは、歩みを間引いてでも残す */
+          const a = dex.albums[dex.albums.length - 1];
           const logs = Array.isArray(a.logs) ? a.logs : [];
-          a.logs = logs.length > 10
-            ? logs.filter((_, i) => i === 0 || i === logs.length - 1 || i % 2 === 0)
-            : logs;
-          a.trimmed = true;
+          if (logs.length > 10) {
+            a.logs = logs.filter((_, i) => i === 0 || i === logs.length - 1 || i % 2 === 0);
+            a.trimmed = true;
+            continue;
+          }
+          if (logs.length) { a.logs = []; a.trimmed = true; continue; }
+          dex.albums.pop();
           continue;
         }
-        if (dex.albums.length === 1 && step === 1) {
-          /* それでも無理なら、歩みを諦めてプロフィールだけ残す */
-          step = 2;
-          dex.albums[0].logs = [];
-          dex.albums[0].trimmed = true;
-          continue;
-        }
-        if (dex.albums.length === 1) { dex.albums.pop(); continue; }
         if (dex.history.length) { dex.history.pop(); continue; }
         return dex;
       }
     }
     return dex;
+  }
+
+  /* 40匹を超えたら古い通常記録から押し出す。⭐は残す（最大20匹）。 */
+  function trimAlbums(dex) {
+    if (!dex || !Array.isArray(dex.albums)) return dex;
+    let guard = 0;
+    while (guard++ < 600) {
+      let normal = 0;
+      dex.albums.forEach(a => { if (a && !a.fav) normal += 1; });
+      if (normal <= ALBUM_MAX) break;
+      const idx = lastNonFavIndex(dex.albums);
+      if (idx < 0) break;
+      dex.albums.splice(idx, 1);
+    }
+    const favs = [];
+    dex.albums.forEach((a, i) => { if (a && a.fav) favs.push(i); });
+    if (favs.length > FAV_MAX) favs.slice(FAV_MAX).forEach(i => { dex.albums[i].fav = false; });
+    return dex;
+  }
+
+  /* ⭐の付け外し（純ロジック。UIからもテストからも呼ぶ） */
+  function toggleFavorite(dex, id) {
+    const list = (dex && Array.isArray(dex.albums)) ? dex.albums : [];
+    const rec = list.filter(a => a && a.id === id)[0];
+    const favCount = () => list.filter(a => a && a.fav).length;
+    if (!rec) return { ok: false, reason: 'missing', fav: false, count: favCount(), max: FAV_MAX };
+    if (!rec.fav && favCount() >= FAV_MAX) {
+      return { ok: false, reason: 'full', fav: false, count: favCount(), max: FAV_MAX };
+    }
+    rec.fav = !rec.fav;
+    rec.favAt = rec.fav && (typeof Date !== 'undefined' && Date.now) ? Date.now() : 0;
+    saveDex(dex);
+    return { ok: true, fav: !!rec.fav, count: favCount(), max: FAV_MAX };
   }
 
   const CATALOG = E.dexCatalog();
@@ -192,6 +230,8 @@
       maneki: !!cat.maneki,
       finalStage: stage,
       stats: { energy: st.energy, food: st.food, luck: st.luck },
+      hungry: !!cat.hungerWeak,
+      mutations: (cat.mutations || []).map(m => ({ key: m.key, name: m.name })),
       art: {
         type: A.typeFor(cat), stage: stage === 'kitten' ? 'kitten' : 'adult',
         collar: !!cat.adopted, nekomata: !!cat.nekomata, maneki: !!cat.maneki,
@@ -231,7 +271,7 @@
     /* 猫生のフル記録（図鑑の「過去の猫生」） */
     if (!Array.isArray(dex.albums)) dex.albums = [];
     dex.albums.unshift(albumEntry(cat));
-    while (dex.albums.length > ALBUM_MAX) dex.albums.pop();
+    trimAlbums(dex);
     saveDex(dex);
     return dex;
   }
@@ -504,6 +544,7 @@
       <p class="finale-caption">${cat.caption}</p>
       <div class="finale-who"><span class="finale-flag">${cat.region.flag}</span>${cat.name} ／ ${subject}</div>
       ${cat.adopted ? '<div class="finale-collar">🔔 拾われて、家族の猫になった子</div>' : ''}
+      ${cat.hungerWeak ? '<div class="finale-hunger">🍽 おなかが足りない時期が続いて、体調を崩しやすかった</div>' : ''}
       ${form}
     </div>
     ${achBurstHTML(achNew, dex)}
@@ -573,6 +614,7 @@
     else if (rec.maneki) out.push(['🏮', '招き猫']);
     if (rec.bossCat) out.push(['👑', 'ボス猫']);
     if (rec.adopted) out.push(['🏡', rec.maneki ? 'お店の子' : '家族の子']);
+    if (rec.hungry) out.push(['🍽', '空腹が続いた']);
     return out.map(b => `<span class="album-flag">${b[0]} ${b[1]}</span>`).join('');
   }
 
@@ -591,26 +633,48 @@
     const coat = rec.breed ? kind + '・' + rec.breed : kind;
     const ageY = Number(rec.ageYears) || 0;
     const stats = rec.stats || null;
-    return `<button class="album-card" data-album="${rec.id}" aria-label="${rec.name}の猫生を開く">
-      <span class="album-thumb">${albumStill(rec, 'is-thumb')}</span>
-      <span class="album-info">
-        <span class="album-name">${rec.name || '名もなき猫'}<span class="rarity r-${rec.rarity || 'N'}">${rec.rarity || 'N'}</span></span>
-        <span class="album-sub">${reg.flag || '🌍'} ${reg.name || ''}</span>
-        <span class="album-line">${rec.speciesName || ''}${coat ? '・' + coat : ''}</span>
-        <span class="album-line">🌈 享年 <b>${ageText(ageY)}</b>${stats ? `　❤️${stats.energy} 🐟${stats.food} 🍀${stats.luck}` : ''}</span>
-        <span class="album-flags">${albumFlagsHTML(rec)}</span>
-      </span>
-      <span class="album-arrow" aria-hidden="true">›</span>
-    </button>`;
+    const fav = !!rec.fav;
+    return `<div class="album-card${fav ? ' is-fav' : ''}">
+      <div class="album-main" data-album="${rec.id}" role="button" tabindex="0" aria-label="${rec.name}の猫生を開く">
+        <span class="album-thumb">${albumStill(rec, 'is-thumb')}</span>
+        <span class="album-info">
+          <span class="album-name">${rec.name || '名もなき猫'}<span class="rarity r-${rec.rarity || 'N'}">${rec.rarity || 'N'}</span></span>
+          <span class="album-sub">${reg.flag || '🌍'} ${reg.name || ''}</span>
+          <span class="album-line">${rec.speciesName || ''}${coat ? '・' + coat : ''}</span>
+          <span class="album-line">🌈 享年 <b>${ageText(ageY)}</b>${stats ? `　❤️${stats.energy} 🐟${stats.food} 🍀${stats.luck}` : ''}</span>
+          <span class="album-flags">${albumFlagsHTML(rec)}</span>
+        </span>
+        <span class="album-arrow" aria-hidden="true">›</span>
+      </div>
+      <button class="album-star${fav ? ' is-on' : ''}" data-fav="${rec.id}" aria-pressed="${fav ? 'true' : 'false'}" aria-label="${fav ? 'お気に入りから外す' : 'お気に入りに登録'}">${fav ? '★' : '☆'}</button>
+    </div>`;
   }
 
-  function albumListHTML(dex) {
+  function albumFilterHTML(dex, filter) {
+    const list = (dex && Array.isArray(dex.albums)) ? dex.albums : [];
+    if (!list.length) return '';
+    const favs = list.filter(a => a && a.fav).length;
+    const on = filter === 'fav' ? 'fav' : 'all';
+    return `<div class="album-filter" role="tablist" aria-label="過去の猫生の絞り込み">
+      <button class="album-filter-btn${on === 'all' ? ' is-active' : ''}" data-album-filter="all" role="tab" aria-selected="${on === 'all' ? 'true' : 'false'}">すべて <b>${list.length}</b></button>
+      <button class="album-filter-btn${on === 'fav' ? ' is-active' : ''}" data-album-filter="fav" role="tab" aria-selected="${on === 'fav' ? 'true' : 'false'}">⭐ お気に入り <b>${favs}</b></button>
+    </div>`;
+  }
+
+  function albumListHTML(dex, filter) {
     const list = (dex && Array.isArray(dex.albums)) ? dex.albums : [];
     if (!list.length) {
       return `<p class="empty-note">まだ過去の猫生はありません。1匹の猫を最後まで見届けると、その子のイラスト・プロフィール・生まれた日から最期までの歩みが、まるごとここに残ります。</p>`;
     }
-    return `<p class="album-lead">📖 ${list.length}匹の猫生が残っています。タップすると、生まれた日から最期までをそのまま読み返せます。</p>
-      <div class="album-list">${list.map(albumCardHTML).join('')}</div>`;
+    const favOnly = filter === 'fav';
+    const shown = favOnly ? list.filter(a => a && a.fav) : list;
+    const favNote = favOnly
+      ? (shown.length ? `<p class="album-lead">⭐ ${shown.length}匹のお気に入り。40匹の上限を超えても、⭐のついた猫生は残ります。</p>`
+        : `<p class="empty-note">⭐のお気に入りはまだありません。一覧や詳細の「☆ お気に入り」で、残したい猫生に印をつけられます。</p>`)
+      : `<p class="album-lead">📖 ${list.length}匹の猫生が残っています。タップすると、生まれた日から最期までをそのまま読み返せます。</p>`;
+    return `${favNote}
+      ${albumFilterHTML(dex, filter)}
+      <div class="album-list">${shown.map(albumCardHTML).join('')}</div>`;
   }
 
   function albumStepHTML(log) {
@@ -669,6 +733,11 @@
           <p class="album-hero-sub">${reg.flag || '🌍'} ${reg.name || ''} ／ ${rec.speciesName || ''}</p>
           <div class="album-hero-flags">${albumFlagsHTML(rec)}</div>
           <p class="album-hero-caption">${rec.caption || ''}</p>
+          <div class="album-actions">
+            <button class="album-fav${rec.fav ? ' is-on' : ''}" data-fav="${rec.id}" aria-pressed="${rec.fav ? 'true' : 'false'}">${rec.fav ? '★ お気に入り' : '☆ お気に入り'}</button>
+            <button class="album-card-btn" data-card="${rec.id}">📸 カード画像を保存</button>
+            <button class="album-x-btn" data-xshare="${rec.id}" aria-label="Xでシェア">𝕏 シェア</button>
+          </div>
         </div>
         <div class="who-card">
           <p class="who-title">🐾 この子のプロフィール</p>
@@ -689,7 +758,7 @@
       </div>`;
   }
 
-  function buildDexHTML(dex, tab, albumId) {
+  function buildDexHTML(dex, tab, albumId, filter) {
     if (tab === 'species') {
       const coats = CATALOG.species.filter(s => s.group === 'coat');
       const breeds = CATALOG.species.filter(s => s.group === 'breed');
@@ -702,7 +771,7 @@
     if (tab === 'albums') {
       const list = Array.isArray(dex.albums) ? dex.albums : [];
       const rec = albumId ? list.filter(a => a && a.id === albumId)[0] : null;
-      return rec ? albumDetailHTML(rec) : albumListHTML(dex);
+      return rec ? albumDetailHTML(rec) : albumListHTML(dex, filter);
     }
     if (tab === 'mutations') {
       const rows = CATALOG.mutations.map(m => {
@@ -769,7 +838,8 @@
       picked: {}, recorded: false, shownStage: null, shownScene: null, taps: 0, adopted: false,
       auto: true, speed: 1, autoTimer: null, newAch: [], shownForm: null, rulerKey: null, msShown: {},
       started: false, choiceTimer: null, choiceLeft: null, choiceStart: 0, autoPicked: false,
-      albumId: null, albumFrom: null
+      albumId: null, albumFrom: null, albumFilter: 'all',
+      shownPinch: false, cardURL: '', cardName: ''
     };
 
     const el = {
@@ -789,7 +859,11 @@
       autoBar: $('autoBar'),
       autoBtn: $('autoBtn'), autoBtnIcon: $('autoBtnIcon'), autoBtnText: $('autoBtnText'),
       autoNote: $('autoNote'), speed1: $('speed1'), speed2: $('speed2'),
-      lifeAge: $('lifeAge'), lifeSeason: $('lifeSeason'), lifeMarks: $('lifeMarks')
+      lifeAge: $('lifeAge'), lifeSeason: $('lifeSeason'), lifeMarks: $('lifeMarks'),
+      soundBtn: $('soundBtn'), soundIcon: $('soundIcon'),
+      stagePinch: $('stagePinch'), stageAlert: $('stageAlert'),
+      cardBtn: $('cardBtn'), cardModal: $('cardModal'), cardImg: $('cardImg'), cardPreview: $('cardPreview'),
+      cardDownload: $('cardDownload'), cardShare: $('cardShare'), cardNative: $('cardNative'), closeCard: $('closeCard')
     };
 
     /* 名札はトップバーのすぐ下に貼りつく（高さは画面ごとに測る） */
@@ -828,6 +902,10 @@
     function toast(text, tone) {
       el.stageToast.textContent = text;
       el.stageToast.className = 'stage-toast is-on ' + (tone ? 'is-' + tone : '');
+      if (tone === 'adopt') SND.play('adopt');
+      else if (tone === 'evolve') SND.play('evolve');
+      else if (tone === 'milestone') SND.play('milestone');
+      else if (tone === 'danger') SND.play('pinch');
       const t = root.setTimeout || setTimeout;
       t(function () { el.stageToast.className = 'stage-toast'; }, 2200);
     }
@@ -845,8 +923,11 @@
       state.shownStage = 'kitten';
       state.shownScene = null;
       state.adopted = false;
+      state.shownPinch = false;
       el.catActor.innerHTML = A.actorHTML(cat, { stage: 'kitten' });
       el.catStage.classList.remove('is-finale');
+      el.catStage.classList.remove('is-pinch');
+      if (el.stageAlert) { el.stageAlert.textContent = ''; el.stageAlert.hidden = true; el.stageAlert.className = 'stage-alert'; }
       el.stats.innerHTML = A.statsHTML(cat, 0);
       el.tapHint.hidden = false;
     }
@@ -917,6 +998,27 @@
       el.stats.innerHTML = A.statsHTML(cat, idx);
       el.catStage.classList.toggle('is-finale', dead);
       if (dead) el.tapHint.hidden = true;
+
+      /* ❤️🐟🍀 と運命の連動：ピンチは枠が赤く脈打ち、空腹は小さなサインが出る */
+      const fate = E.fateAt ? E.fateAt(cat, idx) : null;
+      el.catStage.classList.toggle('is-pinch', !!(fate && fate.pinch && !dead));
+      if (el.stageAlert) {
+        let txt = '', cls = '';
+        if (!dead && fate) {
+          if (fate.pinch) { txt = '❤️ ピンチ！'; cls = 'is-pinch'; }
+          else if (fate.hungry) { txt = '🐟 おなかペコペコ'; cls = 'is-hungry'; }
+          else if (fate.lucky) { txt = '🍀 幸運の風'; cls = 'is-lucky'; }
+        }
+        el.stageAlert.textContent = txt;
+        el.stageAlert.className = 'stage-alert' + (txt ? ' is-on ' + cls : '');
+        el.stageAlert.hidden = !txt;
+      }
+      if (fate && fate.pinch && !dead && !state.shownPinch) {
+        state.shownPinch = true;
+        SND.play('pinch');
+      } else if (!fate || !fate.pinch) {
+        state.shownPinch = false;
+      }
     }
 
     /* --- 猫をタップすると跳ねる --- */
@@ -930,6 +1032,7 @@
         art.classList.add('is-hop');
       }
       state.taps += 1;
+      SND.play('tap');
       const b = A.bubbleFor(cat.seed || 1, state.taps);
       const layer = document.getElementById('bubbleLayer');
       if (layer) {
@@ -1141,6 +1244,7 @@
           state.recorded = true;
           state.newAch = unlockAchievements(state.dex, cat);
           refreshStats();
+          SND.play('death');
         }
         el.finaleBody.innerHTML = buildFinaleHTML(cat, state.newAch, state.dex);
       } else {
@@ -1215,6 +1319,7 @@
       stopChoiceClock();
       state.choiceLeft = null;
       hideChoiceClock();
+      SND.play('choice');
       const autoPick = !!state.autoPicked;
       const fx = E.applyChoice(cat, idx, i);
       /* 放っておいて選ばれたのか（おまかせ）、読んで選んだのかを記録に残す */
@@ -1275,6 +1380,7 @@
       state.rolling = true;
       el.rollBtn.disabled = true;
       el.overlay.hidden = false;
+      SND.play('roll');
 
       const cat = E.rollCat();
       const start = Date.now();
@@ -1303,6 +1409,7 @@
         el.rollBtn.disabled = false;
         state.rolling = false;
         startStory(c);
+        SND.play('birth');
       }
     }
 
@@ -1315,10 +1422,126 @@
     }
     el.shareBtn.addEventListener('click', share);
 
+    /* --- 📸 猫生カード画像（Canvas） --- */
+    function findAlbum(id) {
+      const list = Array.isArray(state.dex.albums) ? state.dex.albums : [];
+      return list.filter(a => a && a.id === id)[0] || null;
+    }
+
+    function albumShareURL(rec) {
+      const d = CATCARD.cardData(rec) || {};
+      const lines = [
+        `【世界猫生ガチャ】${d.rarity || 'N'}｜${d.name || '名もなき猫'}`,
+        `${d.flag || '🌍'} ${d.place || ''}${d.species ? 'の' + d.species : ''}／享年${d.ageLabel || ''}${d.cause ? '（' + d.cause + '）' : ''}`
+      ];
+      if (d.nekomata) lines.push('🔮 100年を生きた猫又');
+      else if (d.maneki) lines.push('🏮 お店の看板猫だった');
+      else if (d.boss) lines.push('👑 この街のボス猫だった');
+      if (d.adopted) lines.push('🏡 途中で人に拾われて、家族の猫になった');
+      lines.push(`確率 ${d.probText || ''}（${d.oneIn || ''}）`);
+      lines.push('#世界猫生ガチャ');
+      const url = (root.location && /^https?:/.test(root.location.protocol)) ? root.location.href : '';
+      return 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(lines.join('\n')) + (url ? '&url=' + encodeURIComponent(url) : '');
+    }
+
+    function makeCanvas(w, h) {
+      const c = root.document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      return c;
+    }
+
+    function closeCard() {
+      if (el.cardModal) el.cardModal.hidden = true;
+      if (root.document && root.document.body && root.document.body.style) root.document.body.style.overflow = '';
+    }
+
+    function showCard(rec) {
+      if (!rec || !root.CATCARD) return;
+      const data = CATCARD.cardData(rec);
+      if (!data) return;
+      const path = A.imgPath(data.art.type, data.art.stage);
+      const paint = (img) => {
+        const out = CATCARD.render(rec, { createCanvas: makeCanvas, image: img });
+        if (!out.dataURL) { toast('カード画像を作れなかった…', 'danger'); return; }
+        state.cardURL = out.dataURL;
+        state.cardName = CATCARD.fileName(out.data);
+        if (el.cardImg) {
+          el.cardImg.src = out.dataURL;
+          el.cardImg.alt = out.data.name + 'の猫生カード';
+        }
+        if (el.cardDownload) {
+          el.cardDownload.setAttribute('href', out.dataURL);
+          el.cardDownload.setAttribute('download', state.cardName);
+        }
+        if (el.cardNative) el.cardNative.hidden = !(root.navigator && typeof root.navigator.canShare === 'function');
+        if (el.cardModal) el.cardModal.hidden = false;
+        if (root.document && root.document.body && root.document.body.style) root.document.body.style.overflow = 'hidden';
+        SND.play('card');
+      };
+      if (typeof root.Image !== 'function') { paint(null); return; }
+      try {
+        const img = new root.Image();
+        img.onload = function () { paint(img); };
+        img.onerror = function () { paint(null); };
+        img.src = path;
+      } catch (e) { paint(null); }
+    }
+
+    /* iOS Safari 等のネイティブ共有シート（使える時だけ） */
+    function shareCardNative() {
+      if (!state.cardURL) return;
+      const nav = root.navigator;
+      const fetchFn = root.fetch || (typeof fetch === 'function' ? fetch : null);
+      if (!nav || typeof nav.share !== 'function' || !root.File || !fetchFn) {
+        toast('共有シートが使えないみたい。長押しで保存してね', 'adopt');
+        return;
+      }
+      fetchFn(state.cardURL).then(r => r.blob()).then(blob => {
+        const file = new root.File([blob], state.cardName || 'catgacha.png', { type: 'image/png' });
+        if (typeof nav.canShare === 'function' && nav.canShare({ files: [file] })) {
+          return nav.share({ files: [file], text: '#世界猫生ガチャ' });
+        }
+        toast('この端末では共有シートが使えないみたい。長押しで保存してね', 'adopt');
+      }).catch(() => toast('共有できなかった。長押しで保存してね', 'danger'));
+    }
+
+    if (el.cardBtn) el.cardBtn.addEventListener('click', () => { if (state.current) showCard(state.current); });
+    if (el.closeCard) el.closeCard.addEventListener('click', closeCard);
+    if (el.cardModal) el.cardModal.addEventListener('click', (e) => { if (e.target === el.cardModal) closeCard(); });
+    if (el.cardShare) el.cardShare.addEventListener('click', () => {
+      const rec = state.current;
+      if (rec) root.open(shareURL(rec), '_blank', 'noopener');
+    });
+    if (el.cardNative) el.cardNative.addEventListener('click', shareCardNative);
+
+    /* --- 🔊 音のON/OFF --- */
+    function paintSound() {
+      const on = SND.isOn();
+      if (el.soundIcon) el.soundIcon.textContent = on ? '🔊' : '🔇';
+      if (el.soundBtn) {
+        el.soundBtn.classList.toggle('is-off', !on);
+        if (el.soundBtn.setAttribute) {
+          el.soundBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+          el.soundBtn.setAttribute('aria-label', on ? '音をオフにする' : '音をオンにする');
+        }
+      }
+    }
+    if (el.soundBtn) el.soundBtn.addEventListener('click', () => { SND.toggle(); paintSound(); });
+    paintSound();
+
+    /* ⭐お気に入り */
+    function onFavorite(id) {
+      const r = toggleFavorite(state.dex, id);
+      if (!r.ok && r.reason === 'full') toast('⭐は' + r.max + '匹まで。どれかを外してからね', 'adopt');
+      else if (r.ok) toast(r.fav ? '⭐ お気に入りに登録した' : '☆ お気に入りを外した', 'adopt');
+      renderDex();
+    }
+
     /* --- 図鑑 --- */
     function renderDex() {
       el.dexSummary.innerHTML = dexSummaryHTML(state.dex);
-      el.dexBody.innerHTML = buildDexHTML(state.dex, state.tab, state.albumId);
+      el.dexBody.innerHTML = buildDexHTML(state.dex, state.tab, state.albumId, state.albumFilter);
       if (el.dexBody && el.dexBody.scrollTop) el.dexBody.scrollTop = 0;
       document.querySelectorAll('.tab').forEach(t => {
         const on = t.dataset.tab === state.tab;
@@ -1361,6 +1584,23 @@
         const t = ev && ev.target;
         if (!t || typeof t.closest !== 'function') return;
         if (t.closest('[data-album-back]')) { closeAlbum(); return; }
+        const fav = t.closest('[data-fav]');
+        if (fav && fav.getAttribute) { onFavorite(fav.getAttribute('data-fav')); return; }
+        const flt = t.closest('[data-album-filter]');
+        if (flt && flt.getAttribute) {
+          state.albumFilter = flt.getAttribute('data-album-filter') === 'fav' ? 'fav' : 'all';
+          state.albumId = null;
+          renderDex();
+          return;
+        }
+        const card = t.closest('[data-card]');
+        if (card && card.getAttribute) { showCard(findAlbum(card.getAttribute('data-card'))); return; }
+        const xs = t.closest('[data-xshare]');
+        if (xs && xs.getAttribute) {
+          const rec = findAlbum(xs.getAttribute('data-xshare'));
+          if (rec) root.open(albumShareURL(rec), '_blank', 'noopener');
+          return;
+        }
         const hit = t.closest('[data-album]');
         if (hit && hit.getAttribute) {
           const id = hit.getAttribute('data-album');
@@ -1372,7 +1612,11 @@
       t.addEventListener('click', () => { state.tab = t.dataset.tab; state.albumId = null; renderDex(); });
     });
 
-    root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el.dexModal.hidden) closeDex(); });
+    root.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (el.cardModal && !el.cardModal.hidden) { closeCard(); return; }
+      if (el.dexModal && !el.dexModal.hidden) closeDex();
+    });
 
     /* 外部からテストできるように公開 */
     root.CATAPP.walk = walk;
@@ -1397,6 +1641,12 @@
     root.CATAPP.openAlbum = openAlbum;
     root.CATAPP.closeAlbum = closeAlbum;
     root.CATAPP.renderDex = renderDex;
+    root.CATAPP.onFavorite = onFavorite;
+    root.CATAPP.showCard = showCard;
+    root.CATAPP.closeCard = closeCard;
+    root.CATAPP.albumShareURL = albumShareURL;
+    root.CATAPP.paintSound = paintSound;
+    root.CATAPP.findAlbum = findAlbum;
   }
 
   root.CATAPP = Object.assign(root.CATAPP || {}, {
@@ -1405,8 +1655,9 @@
     nameplateHTML, profileHTML, rareCardHTML, eyeText, progressHTML,
     TOTAL_TARGETS, CATALOG, formAt, achBurstHTML,
     buildResultHTML: function (cat) { return stepCardHTML(cat, 0, {}); },
-    albumEntry, albumLogs, albumListHTML, albumDetailHTML, albumCardHTML,
-    albumStepHTML, albumFlagsHTML, albumStill, saveDex, ALBUM_MAX, CAUSE_JP
+    albumEntry, albumLogs, albumListHTML, albumDetailHTML, albumCardHTML, albumFilterHTML,
+    albumStepHTML, albumFlagsHTML, albumStill, saveDex, ALBUM_MAX, FAV_MAX, CAUSE_JP,
+    trimAlbums, toggleFavorite, lastNonFavIndex
   });
   init();
 })(typeof globalThis !== 'undefined' ? globalThis : this);

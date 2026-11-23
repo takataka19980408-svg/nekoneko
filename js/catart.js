@@ -235,7 +235,12 @@
       const delta = idx > 0 && d !== 0
         ? `<em class="stat-delta ${d > 0 ? 'is-up' : 'is-down'}">${d > 0 ? '+' : ''}${d}</em>`
         : '';
-      return `<div class="stat stat--${r.cls}">
+      /* ステータスと運命の連動を、その場で小さく知らせる */
+      let mod = '', flag = '';
+      if (r.k === 'energy' && v <= 20) { mod = ' is-pinch'; flag = 'ピンチ'; }
+      else if (r.k === 'food' && v <= 20) { mod = ' is-hungry'; flag = '空腹'; }
+      else if (r.k === 'luck' && v >= 70) { mod = ' is-lucky'; flag = '幸運'; }
+      return `<div class="stat stat--${r.cls}${mod}"${flag ? ` data-flag="${flag}"` : ''}>
         <span class="stat-icon" aria-hidden="true">${r.icon}</span>
         <span class="stat-name">${r.name}</span>
         <span class="stat-bar"><i style="width:${v}%"></i></span>

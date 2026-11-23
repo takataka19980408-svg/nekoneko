@@ -24,7 +24,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 JS_FILES = [
     "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js", "js/events.js",
-    "js/data.js", "js/engine.js", "js/catart.js", "js/app.js",
+    "js/data.js", "js/engine.js", "js/catart.js", "js/catcard.js", "js/sound.js", "js/app.js",
 ]
 N = 10000
 SEED = 20261123
@@ -776,6 +776,277 @@ def main():
     check(not album["bad"], f"フル記録の不備 {len(album['bad'])}件: {album['bad'][:6]}")
     check("album-step" in album["sample"] and "album-timeline" in album["sample"], "詳細にタイムラインがない")
     check(album["sampleName"] in album["sample"], "詳細に名前がない")
+
+    # ---- ステータスと運命の連動 ----
+    print("\n--- ステータスと運命の連動 ---")
+    fate = json.loads(ctx.eval(r"""
+      (function(){
+        function fake(stats){
+          return {seed: 7, klass: 'domestic', route: 'owned', story: [{kind: 'birth', age: 0, stats: stats}]};
+        }
+        var out = {thresh: CATGACHA.FATE, bad: [], statsHtmlBad: 0, cats: 0,
+                   pinchSteps: 0, hungrySteps: 0, luckySteps: 0, pinchCats: 0, hungryCats: 0, luckyCats: 0};
+        var f1 = CATGACHA.fateAt(fake({energy: 10, food: 50, luck: 50}), 0);
+        var f2 = CATGACHA.fateAt(fake({energy: 50, food: 10, luck: 50}), 0);
+        var f3 = CATGACHA.fateAt(fake({energy: 50, food: 50, luck: 80}), 0);
+        var f4 = CATGACHA.fateAt(fake({energy: 40, food: 40, luck: 40}), 0);
+        out.f1 = f1; out.f2 = f2; out.f3 = f3; out.f4 = f4;
+        out.riskHungry = CATGACHA.fateRiskFactor(fake({energy: 50, food: 10, luck: 50}), 0);
+        out.riskLucky = CATGACHA.fateRiskFactor(fake({energy: 50, food: 80, luck: 80}), 0);
+        for (var s = 1; s <= 500; s++) {
+          var c = CATGACHA.rollCat(s * 7717 + 5);
+          out.cats++;
+          var has = {pinch: false, hungry: false, lucky: false};
+          for (var i = 0; i < c.story.length; i++) {
+            var st = CATGACHA.statsAt(c, i);
+            var f = CATGACHA.fateAt(c, i);
+            if (f.pinch !== (st.energy <= 20) || f.hungry !== (st.food <= 20) || f.lucky !== (st.luck >= 70)) {
+              out.bad.push('flag@' + s + ':' + i);
+            }
+            if (f.pinch) { out.pinchSteps++; has.pinch = true; }
+            if (f.hungry) { out.hungrySteps++; has.hungry = true; }
+            if (f.lucky) { out.luckySteps++; has.lucky = true; }
+            var h = CATART.statsHTML(c, i);
+            var pinchFlag = h.indexOf('is-pinch') >= 0 && h.indexOf('data-flag="ピンチ"') >= 0;
+            var hungryFlag = h.indexOf('is-hungry') >= 0 && h.indexOf('data-flag="空腹"') >= 0;
+            var luckyFlag = h.indexOf('is-lucky') >= 0 && h.indexOf('data-flag="幸運"') >= 0;
+            if (f.pinch !== pinchFlag || f.hungry !== hungryFlag || f.lucky !== luckyFlag) {
+              out.statsHtmlBad++;
+            }
+          }
+          if (has.pinch) out.pinchCats++;
+          if (has.hungry) out.hungryCats++;
+          if (has.lucky) out.luckyCats++;
+        }
+        return JSON.stringify(out);
+      })()
+    """))
+    print(f"  しきい値: ❤️<={fate['thresh']['PINCH']} / 🐟<={fate['thresh']['HUNGRY']} / 🍀>={fate['thresh']['LUCKY']}")
+    print(f"  例: ピンチ={fate['f1']['pinch']} 空腹={fate['f2']['hungry']} 幸運={fate['f3']['lucky']} 通常={fate['f4']['tone'] or 'なし'}")
+    print(f"  事故リスク倍率: 空腹 {fate['riskHungry']:.2f} / 幸運 {fate['riskLucky']:.2f}")
+    print(f"  500猫生: ピンチ{ fate['pinchCats']}頭・空腹{fate['hungryCats']}頭・幸運{fate['luckyCats']}頭（延べ ピンチ{fate['pinchSteps']}歩 / 空腹{fate['hungrySteps']}歩 / 幸運{fate['luckySteps']}歩）")
+    check(not fate["bad"], f"運命フラグがしきい値と不一致: {fate['bad'][:4]}")
+    check(fate["statsHtmlBad"] == 0, f"ステータスの表示クラスが運命と不一致: {fate['statsHtmlBad']}")
+    check(fate["f1"]["pinch"] and fate["f1"]["tone"] == "pinch", "❤️<=20でピンチにならない")
+    check(fate["f2"]["hungry"] and fate["f2"]["tone"] == "hungry", "🐟<=20で空腹にならない")
+    check(fate["f3"]["lucky"] and fate["f3"]["tone"] == "lucky", "🍀>=70で幸運にならない")
+    check(not (fate["f4"]["pinch"] or fate["f4"]["hungry"] or fate["f4"]["lucky"]), "通常ステータスで運命フラグが立つ")
+    check(fate["riskHungry"] > 1.0, "空腹で事故リスクが上がらない")
+    check(fate["riskLucky"] < 1.0, "幸運で事故リスクが下がらない")
+    check(fate["pinchCats"] > 50 and fate["hungryCats"] > 50 and fate["luckyCats"] > 50, "ピンチ/空腹/幸運が出にくすぎる")
+
+    # ---- 空腹が長く続いた子の体調（病気リスク） ----
+    print("\n--- 空腹と体調 ---")
+    hunger = json.loads(ctx.eval(r"""
+      (function(){
+        var out = {cats: 4000, weak: 0, bad: [], ratioMin: 1, ratioMax: 0, short: 0};
+        for (var s = 1; s <= out.cats; s++) {
+          var c = CATGACHA.rollCat(s * 104729 + 17);
+          if (c.hungerWeak) {
+            out.weak++;
+            var story = c.story;
+            if (story[story.length - 1].kind !== 'death') out.bad.push('last@' + s);
+            if (c.deathCause !== 'illness') out.bad.push('cause@' + s);
+            if (story[story.length - 1].cause !== 'illness') out.bad.push('scause@' + s);
+            for (var i = 1; i < story.length; i++) if (story[i].age < story[i - 1].age) out.bad.push('order@' + s);
+            if (story.length < 5) out.bad.push('len@' + s);
+            var r = Number(c.hungerRatio) || 0;
+            out.ratioMin = Math.min(out.ratioMin, r);
+            out.ratioMax = Math.max(out.ratioMax, r);
+            if (c.ageYears < 3) out.bad.push('age@' + s);
+          }
+          if (c.ageYears >= 3 && CATGACHA.hungerRatio(c) >= 0.30) out.short++;
+        }
+        return JSON.stringify(out);
+      })()
+    """))
+    print(f"  空腹が長く続いた猫: {hunger['weak']} / {hunger['cats']}（体調を崩して最期が早まる）")
+    print(f"  記録した空腹率: {hunger['ratioMin']:.2f}〜{hunger['ratioMax']:.2f} / 該当候補 {hunger['short']}頭")
+    check(hunger["weak"] > 0, "空腹で体調を崩す猫が1頭もいない")
+    check(hunger["weak"] < hunger["cats"] * 0.2, "空腹による短命が多すぎる（全体の2割超）")
+    check(not hunger["bad"], f"空腹の最期の記録が不正: {hunger['bad'][:4]}")
+    check(hunger["ratioMin"] >= 0.30, "空腹率がしきい値未満の猫が短命になっている")
+
+    # ---- ⭐お気に入りピン留め（40匹の上限を超えても消えない） ----
+    print("\n--- ⭐お気に入り（過去の猫生） ---")
+    fav = json.loads(ctx.eval(r"""
+      (function(){
+        var out = {bad: []};
+        var dex = CATAPP.emptyDex();
+        var made = [];
+        function make(n, base) {
+          for (var i = 0; i < n; i++) {
+            var c = CATGACHA.rollCat((base + i) * 7919 + 3);
+            CATAPP.record(dex, c);
+            made.push(c);
+          }
+        }
+        make(45, 1);
+        out.full = dex.albums.length;
+        out.max = CATAPP.ALBUM_MAX;
+        var mark = dex.albums[10].id;
+        var r1 = CATAPP.toggleFavorite(dex, mark);
+        out.favOn = r1;
+        make(30, 200);
+        out.after = dex.albums.length;
+        out.hasFav = dex.albums.some(function(a){ return a.id === mark; });
+        out.normal = dex.albums.filter(function(a){ return !a.fav; }).length;
+        var marked = dex.albums.filter(function(a){ return a.id === mark; })[0];
+        out.marked = marked ? {fav: marked.fav, name: marked.name, logs: marked.logs.length} : null;
+        out.listAll = CATAPP.albumListHTML(dex, 'all');
+        out.listFav = CATAPP.albumListHTML(dex, 'fav');
+        out.detail = CATAPP.albumDetailHTML(marked);
+        out.filterAll = (out.listAll.match(/data-album="/g) || []).length;
+        out.filterFav = (out.listFav.match(/data-album="/g) || []).length;
+        out.starOn = (out.listAll.match(/album-star is-on/g) || []).length;
+        /* 解除しても記録は消えない */
+        var r2 = CATAPP.toggleFavorite(dex, mark);
+        out.favOff = r2;
+        out.afterOff = dex.albums.length;
+        /* 上限: ⭐は20匹まで */
+        var d2 = CATAPP.emptyDex();
+        for (var j = 0; j < 25; j++) CATAPP.record(d2, CATGACHA.rollCat((4000 + j) * 31 + 1));
+        var ok = 0, full = 0;
+        d2.albums.forEach(function(a){ var r = CATAPP.toggleFavorite(d2, a.id); if (r.ok) ok++; else if (r.reason === 'full') full++; });
+        out.favMax = {ok: ok, full: full, max: CATAPP.FAV_MAX, count: d2.albums.filter(function(a){ return a.fav; }).length};
+        /* 旧データ（favが無い記録）でも壊れない */
+        var d3 = CATAPP.emptyDex();
+        CATAPP.record(d3, CATGACHA.rollCat(77));
+        d3.albums[0].fav = undefined;
+        out.legacy = CATAPP.albumListHTML(d3, 'all').indexOf('undefined') < 0;
+        return JSON.stringify(out);
+      })()
+    """))
+    print(f"  45匹記録 → {fav['full']}匹（上限{fav['max']}） / ⭐登録後さらに30匹 → {fav['after']}匹（通常{fav['normal']}＋⭐）")
+    print(f"  ⭐の猫は残った: {fav['hasFav']} / 一覧 すべて{fav['filterAll']}枚・⭐だけ{fav['filterFav']}枚 / ★表示 {fav['starOn']}")
+    print(f"  ⭐上限: {fav['favMax']['ok']}匹登録・{fav['favMax']['full']}回は満杯（上限{fav['favMax']['max']}）")
+    check(fav["favOn"]["ok"] and fav["favOn"]["fav"], "⭐を付けられない")
+    check(fav["hasFav"], "40匹を超えると⭐の猫が消える")
+    check(fav["normal"] == fav["max"], f"通常の記録が上限{fav['max']}に保たれていない: {fav['normal']}")
+    check(fav["after"] == fav["max"] + 1, f"⭐が別枠で保護されていない: {fav['after']}")
+    check(fav["filterFav"] == 1 and fav["filterAll"] == fav["after"], "⭐だけの絞り込みができない")
+    check(fav["starOn"] >= 1 and "★" in fav["listAll"], "一覧に★が表示されない")
+    check("お気に入り" in fav["detail"] and "data-card=" in fav["detail"], "詳細に⭐/カードボタンがない")
+    check(fav["favOff"]["ok"] and not fav["favOff"]["fav"], "⭐を外せない")
+    check(fav["afterOff"] == fav["after"], "⭐を外したら記録が消えた")
+    check(fav["favMax"]["ok"] == fav["favMax"]["max"] and fav["favMax"]["full"] == 5, "⭐の上限20匹が効いていない")
+    check(fav["legacy"], "旧データ（favなし）の一覧が壊れる")
+    check("undefined" not in fav["listAll"] and "undefined" not in fav["detail"], "一覧/詳細に undefined が出る")
+
+    # ---- 📸 猫生カード（Canvas 2D） ----
+    print("\n--- 猫生カード画像 ---")
+    card = json.loads(ctx.eval(r"""
+      (function(){
+        function fake(w, h) {
+          var c = {width: w, height: h, calls: {texts: [], ops: 0, images: 0}};
+          var grad = {addColorStop: function(){}};
+          var g = {
+            font: '', fillStyle: '', strokeStyle: '', lineWidth: 1, globalAlpha: 1,
+            textAlign: '', textBaseline: '', globalCompositeOperation: '', lineCap: '',
+            shadowColor: '', shadowBlur: 0, shadowOffsetY: 0,
+            clearRect: function(){ c.calls.ops++; }, fillRect: function(){ c.calls.ops++; },
+            strokeRect: function(){ c.calls.ops++; }, beginPath: function(){ c.calls.ops++; },
+            closePath: function(){}, moveTo: function(){}, lineTo: function(){},
+            quadraticCurveTo: function(){}, bezierCurveTo: function(){}, arc: function(){},
+            ellipse: function(){}, rect: function(){}, fill: function(){}, stroke: function(){},
+            save: function(){}, restore: function(){}, translate: function(){}, rotate: function(){},
+            scale: function(){}, clip: function(){}, setLineDash: function(){},
+            fillText: function(t){ c.calls.texts.push(String(t)); },
+            strokeText: function(t){ c.calls.texts.push(String(t)); },
+            drawImage: function(){ c.calls.images++; },
+            measureText: function(t){ return {width: String(t).length * 17}; },
+            createLinearGradient: function(){ return grad; },
+            createRadialGradient: function(){ return grad; }
+          };
+          c.getContext = function(){ return g; };
+          c.toDataURL = function(){ return 'data:image/png;base64,' + 'QUJDREVGRw'.repeat(60); };
+          return c;
+        }
+        var out = {bad: [], tested: 0, noName: 0, noAge: 0, noOdds: 0, imgs: 0, minLen: 1e9};
+        var dex = CATAPP.emptyDex();
+        for (var s = 1; s <= 45; s++) {
+          var c = CATGACHA.rollCat(s * 2654435761);
+          for (var i = 0; i < c.story.length; i++) {
+            var st = c.story[i];
+            if (st.kind === 'death') break;
+            if (st.choice && st.chosen == null) CATGACHA.applyChoice(c, i, i % 2);
+          }
+          CATAPP.record(dex, c);
+        }
+        var recs = dex.albums.slice();
+        /* 猫又・招き猫も（見つかれば）描く */
+        for (var t = 1; t < 8000 && recs.length < 47; t++) {
+          var rc = CATGACHA.rollCat(t * 7919);
+          if (!rc.nekomata && !rc.maneki) continue;
+          for (var k = 0; k < rc.story.length; k++) {
+            if (rc.story[k].choice && rc.story[k].chosen == null) CATGACHA.applyChoice(rc, k, 0);
+          }
+          recs.push(CATAPP.albumEntry(rc));
+        }
+        var img = {width: 512, height: 512};
+        recs.forEach(function(rec, n){
+          var made = null, canvas = null;
+          try {
+            canvas = fake(1080, 1350);
+            var layerCount = 0;
+            var res = CATCARD.render(rec, {createCanvas: function(w, h){ layerCount++; return fake(w, h); }, image: (n % 2 ? img : null)});
+            made = res;
+            out.tested++;
+            if (!res.dataURL || res.dataURL.indexOf('data:image/png;base64,') !== 0) out.bad.push('url@' + n);
+            else out.minLen = Math.min(out.minLen, res.dataURL.length);
+            if (!res.data || res.w !== 1080 || res.h !== 1350) out.bad.push('size@' + n);
+            var texts = res.data ? [] : [];
+            /* メインのキャンバスに描いた文字を確認 */
+            var main = null;
+            /* render は最初に createCanvas(1080,1350) を呼ぶので、その canvas の texts */
+            var all = [];
+            var drawCalls = null;
+            var test = CATCARD.draw(fake(1080, 1350), CATCARD.cardData(rec), {createCanvas: function(w,h){ return fake(w,h); }, image: (n % 2 ? img : null)});
+            if (!test) out.bad.push('draw@' + n);
+            if (res.data.name !== (rec.name || '名もなき猫')) out.bad.push('name@' + n);
+            if (!res.data.ageLabel) out.noAge++;
+            if (!res.data.oneIn) out.noOdds++;
+            if (/undefined|NaN/.test(JSON.stringify(res.data))) out.bad.push('json@' + n);
+          } catch (e) { out.bad.push('err@' + n + ':' + (e && e.message)); }
+        });
+        /* 文字が実際に描かれているか（1匹ぶん、記録したテキストを見る） */
+        var cap = fake(1080, 1350);
+        var sample = dex.albums[0];
+        CATCARD.draw(cap, CATCARD.cardData(sample), {createCanvas: function(w,h){ return fake(w,h); }, image: {width: 512, height: 512}});
+        out.sampleTexts = cap.calls.texts;
+        out.sampleImages = cap.calls.images;
+        out.sampleOps = cap.calls.ops;
+        out.sampleName = sample.name;
+        out.sampleOne = CATCARD.cardData(sample).oneIn;
+        return JSON.stringify(out);
+      })()
+    """))
+    print(f"  描いたカード: {card['tested']}枚 / dataURL最短 {card['minLen']}文字 / 不備 {len(card['bad'])}")
+    print(f"  サンプル: 文字{len(card['sampleTexts'])}個・描画{card['sampleOps']}回・画像{card['sampleImages']}枚 / 『{card['sampleName']}』")
+    check(not card["bad"], f"カード生成の不備: {card['bad'][:5]}")
+    check(card["tested"] >= 45, "カードのテスト枚数が足りない")
+    check(card["minLen"] > 100, "カードのdataURLが空同然")
+    check(card["sampleName"] in card["sampleTexts"], "カードに名前が描かれていない")
+    check(any("享年" in t for t in card["sampleTexts"]), "カードに享年がない")
+    check(any("分の1" in t for t in card["sampleTexts"]), "カードに珍しさ（約◯分の1）がない")
+    check(card["sampleImages"] > 0, "カードに猫の画像が描かれていない")
+    check(card["noAge"] == 0 and card["noOdds"] == 0, "カードに享年/珍しさの欠けた猫がいる")
+
+    # ---- 音（Web Audio シンセ） ----
+    print("\n--- 音（Web Audio） ---")
+    snd = json.loads(ctx.eval(r"""
+      (function(){
+        var out = {on: CATSOUND.isOn(), playNoAudio: null, threw: false};
+        try { out.playNoAudio = CATSOUND.play('tap'); } catch (e) { out.threw = true; }
+        out.all = Object.keys(CATSOUND.SOUNDS);
+        return JSON.stringify(out);
+      })()
+    """))
+    print(f"  初期ON={snd['on']} / AudioContextなしでも例外なし={not snd['threw']} / 音の種類 {len(snd['all'])}: {' '.join(snd['all'])}")
+    check(snd["on"], "音の初期設定がOFFになっている")
+    check(not snd["threw"], "AudioContextが無い環境で例外が出る")
+    for need in ("roll", "birth", "tap", "choice", "adopt", "milestone", "pinch", "death", "card"):
+        check(need in snd["all"], f"音の種類が足りない: {need}")
 
     # ---- 旧セーブデータ互換（albums / logs が無くても動く） ----
     print("\n--- 旧セーブデータ互換 ---")
