@@ -247,12 +247,22 @@ def main():
     print("オートの一時停止/再開: OK")
 
     # --- 2択のカウントダウン（放っておくとおまかせ選択） ---
+    # 確実に2択のある猫に切りかえて、そのステップまで進める
     ctx.eval("""
-      var g = 0;
-      while (g++ < 90 && !CATAPP.pendingChoice()) {
-        if (CATAPP.state.current.story[CATAPP.state.step].kind === 'death') break;
-        CATAPP.walk();
-      }
+      (function(){
+        var found = null;
+        for (var s = 1; s <= 600 && !found; s++) {
+          var c = CATGACHA.rollCat(s * 7919);
+          for (var i = 1; i < c.story.length; i++) {
+            if (c.story[i].choice) { found = {c: c, k: i}; break; }
+          }
+        }
+        if (!found) throw new Error('2択のある猫が見つからない');
+        CATAPP.start(found.c);
+        CATAPP.state.started = true;
+        CATAPP.state.step = found.k;
+        CATAPP.render();
+      })()
     """)
     if not ctx.eval("!!CATAPP.pendingChoice()"):
         print("[NG] 2択のステップに到達できない")

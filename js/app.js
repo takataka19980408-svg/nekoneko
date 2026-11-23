@@ -1054,6 +1054,8 @@
     root.CATAPP.stopChoiceClock = stopChoiceClock;
     root.CATAPP.choiceTick = choiceTick;
     root.CATAPP.autoPickChoice = autoPickChoice;
+    root.CATAPP.start = startStory;
+    root.CATAPP.render = renderStory;
     root.CATAPP.pendingChoice = pendingChoice;
   }
 
