@@ -94,7 +94,7 @@
       <rect x="12" y="172" width="52" height="72" rx="3" fill="#7C8A94" opacity=".4"/>
       <rect x="254" y="82" width="52" height="72" rx="3" fill="#7C8A94" opacity=".4"/>
       <rect x="254" y="172" width="52" height="58" rx="3" fill="#6E5A44"/>
-      <path d="M118 58 h84 l-14 30 h-56z" fill="#B45B4A"/>`,
+      <path d="M26 98 l54 0 l-9 24 l-37 0 z" fill="#B45B4A"/>`,
     street_ru: () => `
       <rect width="320" height="360" fill="#8E9AAE"/>
       <rect y="284" width="320" height="76" fill="#DCE4EE"/>
@@ -277,17 +277,21 @@
     return `<g clip-path="url(#${u}-frame)">${fn(u)}</g>`;
   }
 
-  /* ---------------- 形 ---------------- */
-  const BODY_PATH = 'M160 182 C128 182 110 208 106 246 C101 290 126 328 160 328 C194 328 219 290 214 246 C210 208 192 182 160 182 Z';
-  /* 子猫用：肩が広くて丸い、ちびっこい体 */
-  const KITTEN_BODY = 'M160 166 C124 166 102 198 98 240 C94 290 122 330 160 330 C198 330 226 290 222 240 C218 198 196 166 160 166 Z';
+  /* ============================================================
+     手描きゆるかわイラスト（ねこあつめ／絵本／LINEスタンプ風）
+     ・白目は描かない：大きな黒目＋瞳色＋白ハイライト2粒
+     ・輪郭は温かいこげ茶の手描き線（#4a3525 / 3px / round）
+     ・もちもち2〜2.5頭身、ωの口、ちょこんとした前足、くるん尻尾
+     ============================================================ */
+  const OUTLINE = '#4a3525';
 
-  /* 年齢ステージ：子猫は頭が大きく体がちいさい、シニアは少し小ぶりで落ち着いた姿 */
-  const STAGE_SCALE = {
-    kitten: { head: 1.26, body: 0.88 },
-    adult: { head: 1.0, body: 1.0 },
-    senior: { head: 0.97, body: 1.0 }
-  };
+  /* お座りした体（頭は別パスで上に重ねる）。もちっと丸い胴 */
+  const BODY_PATH = 'M160 196 C204 196 228 236 228 280 C228 308 200 330 160 330 C120 330 92 308 92 280 C92 236 116 196 160 196 Z';
+
+  /* ちょこんと揃えた前足（左右） */
+  const LEG_L = 'M137 278 C128 278 122 286 122 297 L122 313 C122 323 129 329 137 329 C146 329 152 323 152 313 L152 297 C152 286 147 278 137 278 Z';
+  const LEG_R = 'M183 278 C192 278 198 286 198 297 L198 313 C198 323 191 329 183 329 C174 329 168 323 168 313 L168 297 C168 286 173 278 183 278 Z';
+
   const STAGE_LABEL = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
 
   function stageOf(age) {
@@ -297,285 +301,419 @@
     return 'senior';
   }
 
+  /* ---- 耳（左耳：外側の付け根[94,106] → 先端 → 内側の付け根[138,92]） ---- */
+  const EAR_OB = [100, 104];
+  const EAR_IB = [132, 92];
+  const EAR_SPECS = {
+    normal: [[[88, 90], [92, 60], [104, 42]], [[110, 62], [122, 78], [132, 92]]],
+    round: [[[90, 94], [94, 70], [110, 58]], [[118, 64], [126, 80], [132, 92]]],
+    big: [[[86, 88], [76, 44], [64, 18]], [[84, 50], [112, 80], [132, 92]]],
+    tall: [[[88, 84], [98, 44], [116, 16]], [[120, 46], [128, 74], [132, 92]]],
+    fold: [[[92, 94], [93, 80], [104, 74]], [[116, 66], [127, 74], [130, 83]], [[131, 88], [131, 90], [132, 92]]]
+  };
+
+  function mir(q) { return [320 - q[0], q[1]]; }
+  function segsD(segs) {
+    return segs.map(s => 'C' + s.map(q => q[0] + ' ' + q[1]).join(' ')).join(' ');
+  }
+  /* ベジェ列を逆方向にたどり直す（始点 startPt） */
+  function revSegs(segs, startPt) {
+    const out = [];
+    for (let i = segs.length - 1; i >= 0; i--) {
+      const c = segs[i];
+      const back = i > 0 ? segs[i - 1][2] : startPt;
+      out.push([c[1], c[0], back]);
+    }
+    return out;
+  }
+  /* 右耳用：逆方向＋左右反転 */
+  function revMir(segs) {
+    return revSegs(segs, EAR_OB).map(s => s.map(mir));
+  }
+  function scalePt(q, ctr, k) {
+    return [ctr[0] + (q[0] - ctr[0]) * k, ctr[1] + (q[1] - ctr[1]) * k];
+  }
+
+  /* 輪郭（耳までつながった1本の線） */
+  function headPathD(segs) {
+    return 'M160 206'
+      + ' C124 206 94 190 89 156'
+      + ' C85 130 92 112 100 104'
+      + ' ' + segsD(segs)
+      + ' C148 76 172 76 188 92'
+      + ' ' + segsD(revMir(segs))
+      + ' C228 118 235 132 231 156'
+      + ' C226 190 196 206 160 206 Z';
+  }
+
+  /* 耳の内側（耳の形を少し内側に縮めた相似形） */
+  function innerEarD(segs, mirror) {
+    const ctr = [110, 84], k = 0.58;
+    const sc = segs.map(s => s.map(q => scalePt(q, ctr, k)));
+    const ob = scalePt(EAR_OB, ctr, k);
+    const ib = scalePt(EAR_IB, ctr, k);
+    if (mirror) {
+      const parts = revSegs(sc, ob).map(s => s.map(mir));
+      const start = mir(ib);
+      return 'M' + start[0].toFixed(1) + ' ' + start[1].toFixed(1) + ' ' + segsD(parts) + ' Z';
+    }
+    return 'M' + ob[0].toFixed(1) + ' ' + ob[1].toFixed(1) + ' ' + segsD(sc) + ' Z';
+  }
+
+  /* 耳1つぶんの形（内側の色を耳の中だけに閉じ込めるのに使う） */
+  function earShapeD(segs, mirror) {
+    if (mirror) {
+      const parts = revSegs(segs, EAR_OB).map(s => s.map(mir));
+      const start = mir(EAR_IB);
+      return 'M' + start[0] + ' ' + start[1] + ' ' + segsD(parts) + ' Z';
+    }
+    return 'M' + EAR_OB[0] + ' ' + EAR_OB[1] + ' ' + segsD(segs) + ' Z';
+  }
+
   function geom(cat, stage) {
     const p = cat.pattern || {};
-    const big = p.muzzle === 'wide';
     const earType = p.ears === 'fold' ? 'fold'
       : p.flat ? 'round'
         : p.bigEars ? 'big'
           : p.tall ? 'tall'
             : p.mane ? 'round'
               : 'normal';
-    let ears = {
-      normal: { l: [[112, 96], [138, 76], [98, 34]], r: [[208, 96], [182, 76], [222, 34]] },
-      fold: { l: [[114, 96], [138, 80], [106, 58]], r: [[206, 96], [182, 80], [214, 58]] },
-      big: { l: [[106, 92], [134, 68], [60, 12]], r: [[214, 92], [186, 68], [260, 12]] },
-      tall: { l: [[110, 96], [138, 74], [88, 14]], r: [[210, 96], [182, 74], [232, 14]] },
-      round: { l: [[118, 92], [140, 78], [112, 56]], r: [[202, 92], [180, 78], [208, 56]] }
-    }[earType];
-    if (stage === 'kitten') {
-      // 子猫は耳を短め・丸めに（頭の中心に向かって縮める）
-      const k = 0.8;
-      ears = {
-        l: ears.l.map(q => [160 + (q[0] - 160) * k, 132 + (q[1] - 132) * k]),
-        r: ears.r.map(q => [160 + (q[0] - 160) * k, 132 + (q[1] - 132) * k])
-      };
-    }
-    const sg = STAGE_SCALE[stage] || STAGE_SCALE.adult;
+    const segs = EAR_SPECS[earType] || EAR_SPECS.normal;
     return {
-      big, earType, ears, stage,
-      head: { x: 160, y: 132, r: big ? 60 : 58 },
-      headScale: sg.head,
-      bodyScale: sg.body,
-      body: { x: 160, y: 254 },
-      fill: p.fill || p.base || '#A87B4A'
+      earType, segs, stage,
+      headPath: headPathD(segs),
+      big: p.muzzle === 'wide',
+      headScale: stage === 'kitten' ? 1.13 : stage === 'senior' ? 0.99 : 1,
+      bodyScale: stage === 'kitten' ? 0.94 : (cat.klass === 'wild' && cat.speciesGroup === 'big' ? 1.06 : 1)
     };
   }
 
-  function pts(a) { return a.map(q => q.join(',')).join(' '); }
-  function inset(tri, k) {
-    const cx = tri.reduce((a, q) => a + q[0], 0) / 3;
-    const cy = tri.reduce((a, q) => a + q[1], 0) / 3;
-    return tri.map(q => [q[0] * k + cx * (1 - k), q[1] * k + cy * (1 - k)]);
+  /* ---------------- 色の道具 ---------------- */
+  function lum(hex) {
+    const h = String(hex || '#888888').replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+    if (!isFinite(n)) return 0.5;
+    return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  }
+  function isDark(hex) { return lum(hex) < 0.42; }
+  function mix(hex, to, t) {
+    const a = String(hex || '#888888').replace('#', '');
+    const b = String(to || '#ffffff').replace('#', '');
+    const na = parseInt(a.length === 3 ? a.split('').map(c => c + c).join('') : a, 16);
+    const nb = parseInt(b.length === 3 ? b.split('').map(c => c + c).join('') : b, 16);
+    const r = Math.round(((na >> 16) & 255) * (1 - t) + ((nb >> 16) & 255) * t);
+    const g2 = Math.round(((na >> 8) & 255) * (1 - t) + ((nb >> 8) & 255) * t);
+    const b2 = Math.round((na & 255) * (1 - t) + (nb & 255) * t);
+    return '#' + ((r << 16) | (g2 << 8) | b2).toString(16).padStart(6, '0');
+  }
+
+  /* ふわっとした花びら形（タテガミ・胸毛・頬毛に使う） */
+  function scallop(cx, cy, r, lobes, depth) {
+    let d = '';
+    for (let i = 0; i < lobes; i++) {
+      const a0 = (i / lobes) * Math.PI * 2;
+      const a1 = ((i + 1) / lobes) * Math.PI * 2;
+      const am = (a0 + a1) / 2;
+      const p0 = [cx + Math.cos(a0) * r, cy + Math.sin(a0) * r];
+      const p1 = [cx + Math.cos(a1) * r, cy + Math.sin(a1) * r];
+      const cp = [cx + Math.cos(am) * (r + depth) * 1.02, cy + Math.sin(am) * (r + depth) * 1.02];
+      if (i === 0) d += 'M' + p0[0].toFixed(1) + ' ' + p0[1].toFixed(1);
+      d += ' Q' + cp[0].toFixed(1) + ' ' + cp[1].toFixed(1) + ' ' + p1[0].toFixed(1) + ' ' + p1[1].toFixed(1);
+    }
+    return d + ' Z';
+  }
+
+  /* 有機的な毛のまだら（三毛・サビの斑に使う） */
+  function blob(cx, cy, rx, ry, rnd, n) {
+    n = n || 7;
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const k = 0.74 + rnd() * 0.42;
+      pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]);
+    }
+    let d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+    for (let i = 1; i <= n; i++) {
+      const p0 = pts[i % n], p1 = pts[(i + 1) % n];
+      d += ' Q' + p0[0].toFixed(1) + ' ' + p0[1].toFixed(1)
+        + ' ' + ((p0[0] + p1[0]) / 2).toFixed(1) + ' ' + ((p0[1] + p1[1]) / 2).toFixed(1);
+    }
+    return d + ' Z';
   }
 
   /* ---------------- 柄 ---------------- */
-  function patMackerel(c, rnd) {
+  function bellyPatch(c, cy, rx, ry, op) {
+    return `<ellipse cx="160" cy="${cy}" rx="${rx}" ry="${ry}" fill="${c.belly}" opacity="${op}"/>`;
+  }
+
+  /* --- 体の柄 --- */
+  function bodyMackerel(c, rnd) {
     let s = '';
-    for (let i = 0; i < 6; i++) {
-      const x = 100 + i * 24;
-      const wob = (rnd() - 0.5) * 8;
-      s += `<path d="M${x} 196 q${5 + wob} 28 ${-3 + wob} 54 q${-5 + wob} 24 ${3 + wob} 56" stroke="${c.stripe}" stroke-width="${7 - (i % 2)}" fill="none" stroke-linecap="round" opacity=".8"/>`;
-    }
-    s += `<path d="M134 88 q6 16 2 26" stroke="${c.stripe}" stroke-width="5" fill="none" stroke-linecap="round" opacity=".75"/>`;
-    s += `<path d="M186 88 q-6 16 -2 26" stroke="${c.stripe}" stroke-width="5" fill="none" stroke-linecap="round" opacity=".75"/>`;
-    s += `<path d="M160 84 v14" stroke="${c.stripe}" stroke-width="4" fill="none" stroke-linecap="round" opacity=".55"/>`;
-    s += `<path d="M110 140 q-14 4 -18 14" stroke="${c.stripe}" stroke-width="4" fill="none" stroke-linecap="round" opacity=".55"/>`;
-    s += `<path d="M210 140 q14 4 18 14" stroke="${c.stripe}" stroke-width="4" fill="none" stroke-linecap="round" opacity=".55"/>`;
-    s += `<ellipse cx="160" cy="304" rx="42" ry="26" fill="${c.belly}" opacity=".85"/>`;
-    s += `<ellipse cx="160" cy="172" rx="22" ry="16" fill="${c.belly}" opacity=".45"/>`;
+    [110, 132, 154, 176, 198].forEach((x, i) => {
+      const w = 8 - (i % 2) * 1.2;
+      const d = `M${x} 186 q${(rnd() * 10 - 3).toFixed(1)} 32 ${(rnd() * 10 - 7).toFixed(1)} 58 q${(rnd() * 10 - 7).toFixed(1)} 28 ${(rnd() * 10 - 3).toFixed(1)} 70`;
+      s += `<path d="${d}" stroke="${c.stripe}" stroke-width="${w}" fill="none" stroke-linecap="round" opacity=".78"/>`;
+    });
+    s += bellyPatch(c, 310, 40, 26, 0.62);
     return s;
   }
 
-  function patTiger(c, rnd) {
+  function bodyTiger(c, rnd) {
     let s = '';
-    for (let i = 0; i < 7; i++) {
-      const x = 96 + i * 22;
-      const wob = (rnd() - 0.5) * 6;
-      s += `<path d="M${x} 188 q${7 + wob} 34 ${-4 + wob} 62 q${-7 + wob} 24 ${4 + wob} 58" stroke="${c.stripe}" stroke-width="8.5" fill="none" stroke-linecap="round" opacity=".92"/>`;
-    }
-    s += `<path d="M124 96 l8 22 M140 88 l4 24 M180 88 l-4 24 M196 96 l-8 22" stroke="${c.stripe}" stroke-width="5" stroke-linecap="round"/>`;
-    s += `<ellipse cx="160" cy="306" rx="44" ry="28" fill="${c.belly}" opacity=".9"/>`;
-    s += `<ellipse cx="160" cy="176" rx="30" ry="20" fill="${c.belly}" opacity=".35"/>`;
-    s += `<path d="M124 150 q-10 12 -8 24" stroke="${c.belly}" stroke-width="11" fill="none" opacity=".45" stroke-linecap="round"/>`;
-    s += `<path d="M196 150 q10 12 8 24" stroke="${c.belly}" stroke-width="11" fill="none" opacity=".45" stroke-linecap="round"/>`;
+    [106, 128, 150, 172, 194, 212].forEach((x, i) => {
+      const w = 9.5 - (i % 2) * 1.4;
+      const d = `M${x} 184 q${(rnd() * 8 - 2).toFixed(1)} 34 ${(rnd() * 8 - 6).toFixed(1)} 60 q${(rnd() * 8 - 6).toFixed(1)} 28 ${(rnd() * 8 - 2).toFixed(1)} 68`;
+      s += `<path d="${d}" stroke="${c.stripe}" stroke-width="${w}" fill="none" stroke-linecap="round" opacity=".86"/>`;
+    });
+    s += bellyPatch(c, 312, 42, 24, 0.6);
     return s;
   }
 
-  function patSpotted(c, rnd) {
-    let s = '';
-    for (let i = 0; i < 24; i++) {
-      const x = 96 + rnd() * 128, y = 196 + rnd() * 116;
-      const r = 2.6 + rnd() * 3.2;
-      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.8).toFixed(1)}" fill="${c.stripe}" opacity=".72"/>`;
-    }
-    for (let i = 0; i < 5; i++) {
-      const x = 122 + rnd() * 76, y = 100 + rnd() * 26;
-      s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2.2 + rnd() * 1.6).toFixed(1)}" fill="${c.stripe}" opacity=".65"/>`;
-    }
-    s += `<ellipse cx="160" cy="308" rx="40" ry="26" fill="${c.belly}" opacity=".8"/>`;
-    return s;
-  }
-
-  function patRosette(c, rnd, big) {
-    let s = '';
-    const n = big ? 22 : 20;
+  function bodySpots(c, rnd, n, rmin, rmax, op) {
+    let s = bellyPatch(c, 308, 36, 24, 0.4);
     for (let i = 0; i < n; i++) {
-      const x = 100 + rnd() * 120, y = 198 + rnd() * 108;
-      const rx = (big ? 6.5 : 5.5) + rnd() * 4;
-      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${(rx * 0.8).toFixed(1)}" fill="${shade(c.base, -22)}" stroke="${c.stripe}" stroke-width="2.4" opacity=".95"/>`;
+      const x = 106 + rnd() * 108, y = 202 + rnd() * 120;
+      const r = rmin + rnd() * (rmax - rmin);
+      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.84).toFixed(1)}" fill="${c.stripe}" opacity="${op}"/>`;
     }
-    for (let i = 0; i < 4; i++) {
-      const x = 124 + rnd() * 72, y = 102 + rnd() * 22;
-      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="4" ry="3.2" fill="none" stroke="${c.stripe}" stroke-width="1.6" opacity=".6"/>`;
+    return s;
+  }
+
+  function bodyRosette(c, rnd, big) {
+    let s = bellyPatch(c, 308, 36, 24, 0.36);
+    const n = big ? 13 : 15;
+    for (let i = 0; i < n; i++) {
+      const x = 108 + rnd() * 104, y = 202 + rnd() * 116;
+      const rx = (big ? 7.2 : 5.6) + rnd() * 3.4;
+      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${(rx * 0.84).toFixed(1)}" fill="${mix(c.fill, '#2b2118', 0.3)}" stroke="${c.stripe}" stroke-width="2.6" opacity=".92"/>`;
     }
-    s += `<ellipse cx="160" cy="308" rx="42" ry="26" fill="${c.belly}" opacity=".85"/>`;
     return s;
   }
 
-  function patCheetah(c, rnd) {
+  function bodyCalico(c, rnd) {
+    const o = '#E0913F', k = '#2B2A2F';
+    return `<path d="${blob(116, 244, 30, 46, rnd)}" fill="${o}" opacity=".88"/>`
+      + `<path d="${blob(210, 262, 28, 44, rnd)}" fill="${k}" opacity=".88"/>`
+      + `<path d="${blob(158, 322, 26, 16, rnd)}" fill="${k}" opacity=".8"/>`;
+  }
+
+  function bodyTortie(c, rnd) {
     let s = '';
-    for (let i = 0; i < 32; i++) {
-      const x = 96 + rnd() * 128, y = 194 + rnd() * 118;
-      s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + rnd() * 1.8).toFixed(1)}" fill="${c.stripe}" opacity=".82"/>`;
+    for (let i = 0; i < 11; i++) {
+      const x = 108 + rnd() * 104, y = 202 + rnd() * 114;
+      s += `<path d="${blob(x, y, 12 + rnd() * 14, 10 + rnd() * 12, rnd)}" fill="${c.stripe}" opacity="${(0.55 + rnd() * 0.35).toFixed(2)}"/>`;
     }
-    s += `<ellipse cx="160" cy="308" rx="40" ry="26" fill="${c.belly}" opacity=".85"/>`;
     return s;
   }
 
-  function patCalico(c, rnd) {
-    let s = '';
-    s += `<path d="M98 196 q34-24 44 8 q12 40-16 56 q-32 8-28-64z" fill="#E0913F" opacity=".9"/>`;
-    s += `<path d="M196 202 q36 12 24 58 q-12 36-36 18 q-8-42 12-76z" fill="#2B2A2F" opacity=".9"/>`;
-    s += `<path d="M134 86 q26-14 42 2 q-4 22-22 24 q-16-2-20-26z" fill="#2B2A2F" opacity=".88"/>`;
-    s += `<path d="M120 132 q-20 10-20 30 q14-4 22-18z" fill="#E0913F" opacity=".8"/>`;
-    s += `<ellipse cx="160" cy="310" rx="38" ry="24" fill="#FFFFFF" opacity=".92"/>`;
-    return s;
+  function bodyMask(c, rnd) {
+    const ink = c.stripe;
+    return `<path d="${blob(206, 258, 30, 44, rnd)}" fill="${ink}" opacity=".92"/>`
+      + `<path d="${blob(120, 312, 26, 18, rnd)}" fill="${ink}" opacity=".85"/>`;
   }
 
-  function patTortie(c, rnd) {
-    let s = '';
-    for (let i = 0; i < 14; i++) {
-      const x = 104 + rnd() * 112, y = 196 + rnd() * 112;
-      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(7 + rnd() * 10).toFixed(1)}" ry="${(6 + rnd() * 8).toFixed(1)}" fill="${c.stripe}" opacity="${(0.5 + rnd() * 0.4).toFixed(2)}" transform="rotate(${(rnd() * 90).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})"/>`;
+  function bodyTicked(c, rnd) {
+    let s = bellyPatch(c, 306, 34, 22, 0.28);
+    for (let i = 0; i < 64; i++) {
+      const x = 104 + rnd() * 112, y = 198 + rnd() * 126;
+      s += `<path d="M${x.toFixed(1)} ${y.toFixed(1)} l1.4 5" stroke="${c.stripe}" stroke-width="1.6" opacity=".45" stroke-linecap="round"/>`;
     }
-    s += `<path d="M136 84 q24-12 40 4 q-8 20-22 20 q-14-2-18-24z" fill="${c.stripe}" opacity=".55"/>`;
     return s;
   }
 
-  function patMask(c, rnd) {
-    const ink = c.stripe || '#2B2A2F';
-    let s = '';
-    s += `<path d="M160 74 q-52 0-58 48 q18 24 38 28 q8-16 20-16 q12 0 20 16 q20-4 38-28 q-6-48-58-48z" fill="${ink}"/>`;
-    s += `<path d="M160 120 q-12 16 0 24 q12-8 0-24z" fill="${ink}" opacity=".9"/>`;
-    s += `<path d="M112 100 q-14 34 4 58 q10-24 4-58z" fill="${ink}" opacity=".85"/>`;
-    s += `<path d="M208 100 q14 34-4 58 q-10-24-4-58z" fill="${ink}" opacity=".85"/>`;
-    s += `<path d="M196 210 q42 14 32 64 q-24 18-50 4 q4-44 18-68z" fill="${ink}" opacity=".92"/>`;
-    return s;
+  /* --- 頭の柄 --- */
+  function headMackerel(c) {
+    return `
+      <path d="M134 96 q-3 15 -9 26" stroke="${c.stripe}" stroke-width="7" fill="none" stroke-linecap="round" opacity=".8"/>
+      <path d="M186 96 q3 15 9 26" stroke="${c.stripe}" stroke-width="7" fill="none" stroke-linecap="round" opacity=".8"/>
+      <path d="M160 88 q-3 13 -1 24" stroke="${c.stripe}" stroke-width="5" fill="none" stroke-linecap="round" opacity=".6"/>
+      <path d="M110 160 q-6 10 -7 20" stroke="${c.stripe}" stroke-width="5" fill="none" stroke-linecap="round" opacity=".5"/>
+      <path d="M210 160 q6 10 7 20" stroke="${c.stripe}" stroke-width="5" fill="none" stroke-linecap="round" opacity=".5"/>`;
   }
 
-  function patPointed(c, rnd) {
-    let s = '';
-    s += `<ellipse cx="160" cy="150" rx="34" ry="24" fill="${c.stripe}" opacity=".3"/>`;
-    s += `<ellipse cx="160" cy="310" rx="38" ry="20" fill="${c.stripe}" opacity=".28"/>`;
-    s += `<ellipse cx="130" cy="316" rx="16" ry="10" fill="${c.stripe}" opacity=".35"/>`;
-    s += `<ellipse cx="190" cy="316" rx="16" ry="10" fill="${c.stripe}" opacity=".35"/>`;
-    return s;
-  }
-
-  function patTicked(c, rnd) {
-    let s = '';
-    for (let i = 0; i < 70; i++) {
-      const x = 96 + rnd() * 128, y = 192 + rnd() * 124;
-      s += `<path d="M${x.toFixed(1)} ${y.toFixed(1)} l1.6 5" stroke="${c.stripe}" stroke-width="1.5" opacity=".5"/>`;
-    }
-    s += `<ellipse cx="160" cy="308" rx="40" ry="24" fill="${c.belly}" opacity=".7"/>`;
-    return s;
-  }
-
-  function patternLayer(c, rnd) {
-    switch (c.pattern) {
-      case 'mackerel': return patMackerel(c, rnd);
-      case 'tiger': return patTiger(c, rnd);
-      case 'spotted': return patSpotted(c, rnd);
-      case 'rosette': return patRosette(c, rnd, false);
-      case 'rosette_big': return patRosette(c, rnd, true);
-      case 'cheetah': return patCheetah(c, rnd);
-      case 'calico': return patCalico(c, rnd);
-      case 'tortie': return patTortie(c, rnd);
-      case 'mask': return patMask(c, rnd);
-      case 'pointed': return patPointed(c, rnd);
-      case 'ticked': return patTicked(c, rnd);
-      default: return `<ellipse cx="160" cy="306" rx="40" ry="26" fill="${c.belly || shade(c.base, 20)}" opacity=".4"/>`;
-    }
-  }
-
-  /* ---------------- 顔（ステージ別） ---------------- */
-  function faceSVG(cat, g, eye1, eye2, outline, fill, stage, closed) {
-    const H = g.head;
-    const p = cat.pattern || {};
-    const ey = H.y + 5;
-
-    const brows = `
-      <path d="M121 ${H.y - 5} q16 -10 32 -2" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".22"/>
-      <path d="M167 ${H.y - 7} q16 -8 32 2" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".22"/>`;
-
-    const whiskers = `
-      <g stroke="${outline}" stroke-width="1.5" opacity=".42" stroke-linecap="round">
-        <path d="M134 ${H.y + 24} L100 ${H.y + 18}"/>
-        <path d="M134 ${H.y + 29} L102 ${H.y + 33}"/>
-        <path d="M186 ${H.y + 24} L220 ${H.y + 18}"/>
-        <path d="M186 ${H.y + 29} L218 ${H.y + 33}"/>
+  function headTiger(c) {
+    return `
+      <g stroke="${c.stripe}" stroke-linecap="round" opacity=".9">
+        <path d="M140 90 q-2 14 -6 24" stroke-width="7" fill="none"/>
+        <path d="M152 86 q-1 16 -2 28" stroke-width="7" fill="none"/>
+        <path d="M168 86 q1 16 2 28" stroke-width="7" fill="none"/>
+        <path d="M180 90 q2 14 6 24" stroke-width="7" fill="none"/>
+        <path d="M104 162 q-5 9 -6 17" stroke-width="5.5" fill="none"/>
+        <path d="M216 162 q5 9 6 17" stroke-width="5.5" fill="none"/>
       </g>`;
+  }
 
-    const muzzle = `
-      <ellipse cx="149" cy="${H.y + 28}" rx="10.5" ry="8.5" fill="${shade(fill, 30)}" opacity=".95"/>
-      <ellipse cx="171" cy="${H.y + 28}" rx="10.5" ry="8.5" fill="${shade(fill, 30)}" opacity=".95"/>
-      <path d="M160 ${H.y + 21} l-6 5 q6 5 12 0z" fill="#D98A8A"/>
-      <path d="M160 ${H.y + 27} v4 M160 ${H.y + 31} q-6 5 -10 0 M160 ${H.y + 31} q6 5 10 0" stroke="${outline}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".65"/>
-      ${stage === 'senior' ? `<path d="M150 ${H.y + 36} q10 5 20 0" stroke="${outline}" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".4"/>` : ''}`;
+  function headSpots(c, rnd, n, rmin, rmax) {
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      const x = 132 + rnd() * 56, y = 86 + rnd() * 24;
+      const r = rmin + rnd() * (rmax - rmin);
+      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.84).toFixed(1)}" fill="${c.stripe}" opacity=".7"/>`;
+    }
+    return s;
+  }
 
-    const tearMark = p.tearMark
-      ? `<path d="M140 ${H.y + 12} q-3 14 -5 20" stroke="${shade(cat.pattern.stripe || '#555', 20)}" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/><path d="M180 ${H.y + 12} q3 14 5 20" stroke="${shade(cat.pattern.stripe || '#555', 20)}" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".9"/>`
+  function headRosette(c, rnd) {
+    let s = '';
+    for (let i = 0; i < 2; i++) {
+      const x = 144 + rnd() * 32, y = 86 + rnd() * 10;
+      const rx = 3.4 + rnd() * 1.6;
+      s += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${(rx * 0.82).toFixed(1)}" fill="${mix(c.fill, '#2b2118', 0.28)}" stroke="${c.stripe}" stroke-width="1.6" opacity=".75"/>`;
+    }
+    return s;
+  }
+
+  function headCalico(c, rnd) {
+    return `<path d="${blob(126, 104, 26, 20, rnd)}" fill="#E0913F" opacity=".9"/>`
+      + `<path d="${blob(194, 100, 26, 22, rnd)}" fill="#2B2A2F" opacity=".9"/>`;
+  }
+
+  function headTortie(c, rnd) {
+    return `<path d="${blob(140, 104, 34, 26, rnd)}" fill="${c.stripe}" opacity=".55"/>`;
+  }
+
+  function headMask(c) {
+    const ink = c.stripe;
+    return `<path d="M78 128 C78 58 118 32 160 32 C202 32 242 58 242 128 C226 114 210 110 196 116 C180 122 170 138 160 158 C150 138 140 122 124 116 C110 110 94 114 78 128 Z" fill="${ink}" opacity=".96"/>`;
+  }
+
+  function patternLayer(c, rnd, isHead) {
+    switch (c.pattern) {
+      case 'mackerel': return isHead ? headMackerel(c) : bodyMackerel(c, rnd);
+      case 'tiger': return isHead ? headTiger(c) : bodyTiger(c, rnd);
+      case 'spotted': return isHead ? headSpots(c, rnd, 6, 2.6, 4.4) : bodySpots(c, rnd, 24, 2.8, 6.6, 0.7);
+      case 'rosette': return isHead ? headRosette(c, rnd) : bodyRosette(c, rnd, false);
+      case 'rosette_big': return isHead ? headRosette(c, rnd) : bodyRosette(c, rnd, true);
+      case 'cheetah': return isHead ? headSpots(c, rnd, 5, 2, 3.2) : bodySpots(c, rnd, 34, 1.8, 3.8, 0.8);
+      case 'calico': return isHead ? headCalico(c, rnd) : bodyCalico(c, rnd);
+      case 'tortie': return isHead ? headTortie(c, rnd) : bodyTortie(c, rnd);
+      case 'mask': return isHead ? headMask(c) : bodyMask(c, rnd);
+      case 'ticked': return isHead
+        ? `<g stroke="${c.stripe}" stroke-width="1.6" opacity=".4" stroke-linecap="round"><path d="M136 96 l2 6"/><path d="M150 90 l1 6"/><path d="M172 90 l-1 6"/><path d="M184 96 l-2 6"/><path d="M124 148 l1 5"/><path d="M196 148 l-1 5"/></g>`
+        : bodyTicked(c, rnd);
+      case 'pointed': return isHead
+        ? `<ellipse cx="160" cy="178" rx="34" ry="23" fill="${c.stripe}" opacity=".18"/>
+           <ellipse cx="160" cy="178" rx="27" ry="18" fill="${c.stripe}" opacity=".12"/>`
+        : '';
+      default: return isHead ? '' : bellyPatch(c, 304, 30, 22, 0.22);
+    }
+  }
+
+  /* ---------------- 顔 ---------------- */
+  function faceSVG(g, c, eye1, eye2, stage, closed) {
+    const ny = 168;
+    const line = (d, w, op) => `<path d="${d}" stroke="${OUTLINE}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round"${op ? ` opacity="${op}"` : ''}/>`;
+    const whipCol = c.dark ? 'rgba(255,248,238,.8)' : 'rgba(74,53,37,.5)';
+    const whip = c.dark ? 'rgba(255,248,238,.9)' : 'rgba(74,53,37,.42)';
+
+    /* ひげ（繊細すぎず、可愛いカーブ） */
+    const whiskers = `<g stroke="${whip}" stroke-width="2.1" fill="none" stroke-linecap="round" opacity=".95">
+      <path d="M141 ${ny + 2} q-16 -6 -30 -9"/>
+      <path d="M141 ${ny + 8} q-18 -1 -33 -1"/>
+      <path d="M141 ${ny + 14} q-16 3 -28 10"/>
+      <path d="M179 ${ny + 2} q16 -6 30 -9"/>
+      <path d="M179 ${ny + 8} q18 -1 33 -1"/>
+      <path d="M179 ${ny + 14} q16 3 28 10"/>
+    </g>`;
+
+    /* マズルとωの口 */
+    const big = g.big;
+    const mz = mix(c.fill, '#FFF6EC', isDark(c.fill) ? 0.42 : 0.34);
+    const mx1 = big ? 143 : 146, mx2 = big ? 177 : 174;
+    const mrx = big ? 17 : 15, mry = big ? 12.5 : 11;
+    const muzzle = `<g>
+      <ellipse cx="${mx1}" cy="${ny + 9}" rx="${mrx}" ry="${mry}" fill="${mz}" opacity="${c.dark ? 0.4 : 0.8}"/>
+      <ellipse cx="${mx2}" cy="${ny + 9}" rx="${mrx}" ry="${mry}" fill="${mz}" opacity="${c.dark ? 0.4 : 0.8}"/>
+      ${stage === 'senior' ? `<ellipse cx="160" cy="${ny + 14}" rx="23" ry="11" fill="#FFF7EC" opacity=".4"/>` : ''}
+      <path d="M${160 - (big ? 7 : 6)} ${ny - 1} q${big ? 7 : 6} -3.5 ${big ? 14 : 12} 0 q0 5 -${big ? 7 : 6} 9 q-${big ? 7 : 6} -4 -${big ? 7 : 6} -9 Z" fill="#E7909A" stroke="${OUTLINE}" stroke-width="1.6" stroke-linejoin="round"/>
+      ${line(`M160 ${ny + 8} v3`, 2.4, '.85')}
+      ${closed
+        ? line(`M149 ${ny + 14} q11 7 22 0`, 2.6)
+        : stage === 'senior'
+          ? line(`M151 ${ny + 12} q9 6 18 0`, 2.6, '.85')
+          : line(`M160 ${ny + 11} q-7 8 -14 3.5`, 2.6, '.9') + line(`M160 ${ny + 11} q7 8 14 3.5`, 2.6, '.9')}
+    </g>`;
+
+    /* ほっぺの赤み */
+    const blush = `<g fill="#F79AA6" opacity="${stage === 'kitten' ? 0.46 : 0.28}">
+      <ellipse cx="111" cy="${ny + 6}" rx="11.5" ry="6.2"/>
+      <ellipse cx="209" cy="${ny + 6}" rx="11.5" ry="6.2"/>
+    </g>`;
+
+    const exL = 130, exR = 190, ey = 148;
+
+    /* 目：白目なし。黒目＋瞳色＋ハイライト */
+    let eyes;
+    if (closed) {
+      eyes = `<g>
+        <path d="M${exL - 14} ${ey - 1} q14 12 28 0" stroke="${OUTLINE}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <path d="M${exR - 14} ${ey - 1} q14 12 28 0" stroke="${OUTLINE}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <g stroke="${OUTLINE}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".65">
+          <path d="M${exL - 15} ${ey} l-5 3"/><path d="M${exL + 13} ${ey} l5 3"/>
+          <path d="M${exR - 15} ${ey} l-5 3"/><path d="M${exR + 13} ${ey} l5 3"/>
+        </g>
+      </g>`;
+    } else if (stage === 'senior') {
+      /* シニア：少し小ぶりで穏やかな目元。まぶたの線をそっと添える */
+      const calm = (cx, col) => `<g>
+        <ellipse cx="${cx}" cy="${ey}" rx="11.6" ry="13.4" fill="${col}" stroke="${OUTLINE}" stroke-width="2.4"/>
+        <ellipse cx="${cx}" cy="${ey + 1}" rx="3.9" ry="8.8" fill="#241E1A"/>
+        <circle cx="${cx - 4.4}" cy="${ey - 5.2}" r="3.9" fill="#FFFFFF" opacity=".95"/>
+        <circle cx="${cx + 4.4}" cy="${ey + 6.4}" r="1.9" fill="#FFFFFF" opacity=".8"/>
+        <path d="M${cx - 11} ${ey - 9.6} q11 -4.6 22 0" stroke="${OUTLINE}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".22"/>
+        <path d="M${cx - 14.4} ${ey + 4} q-3.4 3.2 -4.2 6.2" stroke="${OUTLINE}" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".22"/>
+        <g fill="#FFFBF2" opacity=".5">
+          <circle cx="${cx - 6}" cy="${ey - 15.6}" r="1.3"/>
+          <circle cx="${cx + 1}" cy="${ey - 17.2}" r="1.1"/>
+          <circle cx="${cx + 7}" cy="${ey - 15.2}" r="1.2"/>
+        </g>
+      </g>`;
+      eyes = `<g>
+        ${calm(exL, eye1)}${calm(exR, eye2)}
+      </g>`;
+    } else if (stage === 'kitten') {
+      eyes = `<g>
+        <ellipse cx="${exL}" cy="${ey}" rx="15" ry="16" fill="${eye1}" stroke="${OUTLINE}" stroke-width="2.6"/>
+        <ellipse cx="${exR}" cy="${ey}" rx="15" ry="16" fill="${eye2}" stroke="${OUTLINE}" stroke-width="2.6"/>
+        <circle cx="${exL}" cy="${ey + 1}" r="8.2" fill="#241E1A"/>
+        <circle cx="${exR}" cy="${ey + 1}" r="8.2" fill="#241E1A"/>
+        <circle cx="${exL - 5.5}" cy="${ey - 6}" r="5.2" fill="#FFFFFF"/>
+        <circle cx="${exR - 5.5}" cy="${ey - 6}" r="5.2" fill="#FFFFFF"/>
+        <circle cx="${exL + 6}" cy="${ey + 7}" r="2.9" fill="#FFFFFF" opacity=".92"/>
+        <circle cx="${exR + 6}" cy="${ey + 7}" r="2.9" fill="#FFFFFF" opacity=".92"/>
+        <circle cx="${exL - 8}" cy="${ey + 8}" r="1.5" fill="#FFFFFF" opacity=".7"/>
+        <circle cx="${exR - 8}" cy="${ey + 8}" r="1.5" fill="#FFFFFF" opacity=".7"/>
+      </g>`;
+    } else {
+      eyes = `<g>
+        <ellipse cx="${exL}" cy="${ey}" rx="13.2" ry="15.4" fill="${eye1}" stroke="${OUTLINE}" stroke-width="2.5"/>
+        <ellipse cx="${exR}" cy="${ey}" rx="13.2" ry="15.4" fill="${eye2}" stroke="${OUTLINE}" stroke-width="2.5"/>
+        <ellipse cx="${exL}" cy="${ey + 1}" rx="4.4" ry="10.4" fill="#241E1A"/>
+        <ellipse cx="${exR}" cy="${ey + 1}" rx="4.4" ry="10.4" fill="#241E1A"/>
+        <circle cx="${exL - 5.2}" cy="${ey - 6.4}" r="4.8" fill="#FFFFFF"/>
+        <circle cx="${exR - 5.2}" cy="${ey - 6.4}" r="4.8" fill="#FFFFFF"/>
+        <circle cx="${exL + 5.6}" cy="${ey + 7}" r="2.3" fill="#FFFFFF" opacity=".88"/>
+        <circle cx="${exR + 5.6}" cy="${ey + 7}" r="2.3" fill="#FFFFFF" opacity=".88"/>
+      </g>`;
+    }
+
+    /* チーターの涙線 */
+    const tear = c.pattern === 'cheetah' && !closed
+      ? `<g stroke="${c.stripe}" stroke-width="3.6" fill="none" stroke-linecap="round" opacity=".85">
+          <path d="M${exL + 2} ${ey + 15} q-2 10 -4 16"/>
+          <path d="M${exR + 2} ${ey + 15} q2 10 4 16"/>
+        </g>`
       : '';
 
-    if (closed) {
-      return `
-        <path d="M123 ${ey} q14 12 28 0" stroke="${outline}" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>
-        <path d="M169 ${ey} q14 12 28 0" stroke="${outline}" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>
-        <path d="M151 ${ey + 24} q9 7 18 0" stroke="${outline}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".5"/>
-        ${muzzle}
-        ${whiskers}
-        ${tearMark}`;
-    }
+    /* シニアの白いひげ・口元の点 */
+    const seniorBits = stage === 'senior'
+      ? `<g fill="#FFFBF2" opacity=".55">
+          <circle cx="${mx1 - 8}" cy="${ny + 13}" r="1.5"/>
+          <circle cx="${mx2 + 8}" cy="${ny + 13}" r="1.5"/>
+        </g>`
+      : '';
 
-    if (stage === 'kitten') {
-      return `
-        <ellipse cx="137" cy="${ey}" rx="16.5" ry="15.5" fill="#FFFDF8"/>
-        <ellipse cx="183" cy="${ey}" rx="16.5" ry="15.5" fill="#FFFDF8"/>
-        <circle cx="137" cy="${ey}" r="12.6" fill="${eye1}"/>
-        <circle cx="183" cy="${ey}" r="12.6" fill="${eye2}"/>
-        <circle cx="137" cy="${ey + 1}" r="6.6" fill="#171512"/>
-        <circle cx="183" cy="${ey + 1}" r="6.6" fill="#171512"/>
-        <circle cx="132.5" cy="${ey - 4.5}" r="4.4" fill="#FFFFFF" opacity=".95"/>
-        <circle cx="178.5" cy="${ey - 4.5}" r="4.4" fill="#FFFFFF" opacity=".95"/>
-        <circle cx="141.5" cy="${ey + 5.5}" r="1.9" fill="#FFFFFF" opacity=".85"/>
-        <circle cx="187.5" cy="${ey + 5.5}" r="1.9" fill="#FFFFFF" opacity=".85"/>
-        ${brows}
-        <ellipse cx="117" cy="${H.y + 22}" rx="9.5" ry="5.2" fill="#F7A3AD" opacity=".5"/>
-        <ellipse cx="203" cy="${H.y + 22}" rx="9.5" ry="5.2" fill="#F7A3AD" opacity=".5"/>
-        ${muzzle}
-        ${whiskers}
-        ${tearMark}`;
-    }
-
-    if (stage === 'senior') {
-      return `
-        <ellipse cx="137" cy="${ey + 1}" rx="13" ry="11" fill="#FFFDF8"/>
-        <ellipse cx="183" cy="${ey + 1}" rx="13" ry="11" fill="#FFFDF8"/>
-        <ellipse cx="137" cy="${ey + 1}" rx="10" ry="9" fill="${eye1}"/>
-        <ellipse cx="183" cy="${ey + 1}" rx="10" ry="9" fill="${eye2}"/>
-        <ellipse cx="137" cy="${ey + 1}" rx="2.2" ry="6.4" fill="#171512"/>
-        <ellipse cx="183" cy="${ey + 1}" rx="2.2" ry="6.4" fill="#171512"/>
-        <circle cx="133" cy="${ey - 3}" r="2.6" fill="#FFFFFF" opacity=".8"/>
-        <circle cx="179" cy="${ey - 3}" r="2.6" fill="#FFFFFF" opacity=".8"/>
-        <path d="M123 ${ey - 2} q14 -8 28 0" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".45"/>
-        <path d="M169 ${ey - 2} q14 -8 28 0" stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".45"/>
-        ${brows}
-        <g fill="#FFFFFF" opacity=".32">
-          <circle cx="128" cy="${H.y + 27}" r="1.3"/><circle cx="133" cy="${H.y + 33}" r="1.1"/>
-          <circle cx="187" cy="${H.y + 27}" r="1.3"/><circle cx="192" cy="${H.y + 33}" r="1.1"/>
-          <circle cx="160" cy="${H.y - 20}" r="1.4"/>
-        </g>
-        ${muzzle}
-        ${whiskers}
-        ${tearMark}`;
-    }
-
-    return `
-      <ellipse cx="137" cy="${ey}" rx="14.5" ry="13" fill="#FFFDF8"/>
-      <ellipse cx="183" cy="${ey}" rx="14.5" ry="13" fill="#FFFDF8"/>
-      <circle cx="137" cy="${ey + 1}" r="${g.big ? 10 : 11.2}" fill="${eye1}"/>
-      <circle cx="183" cy="${ey + 1}" r="${g.big ? 10 : 11.2}" fill="${eye2}"/>
-      ${g.big
-        ? `<circle cx="137" cy="${ey + 1}" r="4.4" fill="#171512"/><circle cx="183" cy="${ey + 1}" r="4.4" fill="#171512"/>`
-        : `<ellipse cx="137" cy="${ey + 1}" rx="2.5" ry="8.2" fill="#171512"/><ellipse cx="183" cy="${ey + 1}" rx="2.5" ry="8.2" fill="#171512"/>`}
-      <circle cx="133" cy="${ey - 5}" r="3" fill="#FFFFFF" opacity=".92"/>
-      <circle cx="179" cy="${ey - 5}" r="3" fill="#FFFFFF" opacity=".92"/>
-      ${brows}
-      ${muzzle}
-      ${whiskers}
-      ${tearMark}`;
+    return `${blush}${seniorBits}${muzzle}${eyes}${tear}${whiskers}`;
   }
 
   /* ---------------- 本体 ---------------- */
@@ -586,160 +724,154 @@
     const u = 'cg' + (++UID);
     const p = cat.pattern || {};
     const g = geom(cat, stage);
-    const rndSeed = ((cat.seed || 1) ^ 0x9e3779b9) >>> 0;
-    const base = p.base || '#A87B4A';
-    const stripe = p.stripe || shade(base, -60);
-    const belly = p.belly || shade(base, 40);
-    const fill = g.fill;
-    const c = { base, stripe, belly, pattern: p.pattern, fill };
+    const seed = (cat.seed || 1) >>> 0;
+    const fill = p.fill || p.base || '#A87B4A';
+    const stripe = p.stripe || shade(fill, -60);
+    const belly = p.belly || mix(fill, '#FFFAF0', 0.6);
     const eye1 = cat.eyeColor || '#D9A73C';
     const eye2 = cat.eyeColor2 || eye1;
+    const c = { fill, stripe, belly, pattern: p.pattern, dark: isDark(fill) };
+    const headPat = patternLayer(c, mulberry32((seed ^ 0x2545F491) >>> 0), true);
+    const bodyPat = patternLayer(c, mulberry32((seed ^ 0x9E3779B9) >>> 0), false);
     const scene = cat.scene || (cat.route === 'zoo' ? 'zoo' : cat.klass === 'wild' ? (cat.species && cat.species.scene) || 'forest' : (cat.region && cat.region.outScene) || 'alley_jp');
-    const outline = shade(fill, -62);
-    const thick = p.thicktail ? 1.7 : 1;
+
+    const tailColor = p.pattern === 'pointed' ? stripe : fill;
+    const thick = (p.thicktail || p.fluffy) ? 1.6 : 1;
     const bob = p.bobtail || cat.bobtail;
-    const pattern = patternLayer(c, mulberry32(rndSeed));
-    const H = g.head;
-    const hs = g.headScale;
-    const bs = g.bodyScale;
-    const headT = `translate(${H.x} ${H.y}) scale(${hs}) translate(${-H.x} ${-H.y})`;
-    const bodyT = `translate(160 336) scale(${bs}) translate(-160 -336)`;
+    const tailD = bob
+      ? 'M206 300 C226 302 236 310 232 320'
+      : stage === 'kitten'
+        ? 'M208 306 C238 310 252 296 249 279 C247 267 234 263 227 272'
+        : 'M208 306 C252 313 272 292 269 265 C267 244 245 236 235 249 C228 258 234 270 247 268';
+    const tail = `<path d="${tailD}" fill="none" stroke="${OUTLINE}" stroke-width="${(20 * thick).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`
+      + `<path d="${tailD}" fill="none" stroke="${tailColor}" stroke-width="${(15 * thick).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`;
 
-    const tailColor = p.pattern === 'pointed' ? stripe : base;
-    const tailPath = bob
-      ? `<path d="M212 296 q22 2 20 18" stroke="${tailColor}" stroke-width="${22 * thick}" fill="none" stroke-linecap="round"/>`
-      : `<path d="M204 300 q50 4 56 -42 q3 -26 -14 -38" stroke="${tailColor}" stroke-width="${19 * thick}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-         <path d="M204 300 q50 4 56 -42 q3 -26 -14 -38" stroke="${outline}" stroke-width="${19 * thick}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".1"/>`;
-
+    /* タテガミ（ライオン） */
     const mane = p.mane ? (() => {
-      let m = `<circle cx="160" cy="132" r="92" fill="${shade(base, -30)}"/>`;
-      for (let i = 0; i < 20; i++) {
-        const a = (i / 20) * Math.PI * 2;
-        m += `<circle cx="${(160 + Math.cos(a) * 88).toFixed(1)}" cy="${(132 + Math.sin(a) * 88).toFixed(1)}" r="19" fill="${shade(base, -30)}"/>`;
+      let m = `<path d="${scallop(160, 134, 84, 11, 24)}" fill="${shade(fill, -22)}" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round"/>`;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2 + 0.26;
+        const r0 = 50, r1 = 76;
+        m += `<path d="M${(160 + Math.cos(a) * r0).toFixed(1)} ${(134 + Math.sin(a) * r0).toFixed(1)} L${(160 + Math.cos(a) * r1).toFixed(1)} ${(134 + Math.sin(a) * r1).toFixed(1)}" stroke="${shade(fill, -40)}" stroke-width="4.5" stroke-linecap="round" opacity=".3"/>`;
       }
-      m += `<circle cx="160" cy="132" r="84" fill="${shade(base, -10)}"/>`;
-      for (let i = 0; i < 16; i++) {
-        const a = (i / 16) * Math.PI * 2 + 0.2;
-        m += `<circle cx="${(160 + Math.cos(a) * 78).toFixed(1)}" cy="${(132 + Math.sin(a) * 78).toFixed(1)}" r="15" fill="${shade(base, 4)}" opacity=".6"/>`;
-      }
+      m += `<path d="${scallop(160, 134, 76, 11, 18)}" fill="none" stroke="${shade(fill, -34)}" stroke-width="2" opacity=".28"/>`;
       return `<g>${m}</g>`;
     })() : '';
 
-    const ruff = (p.longhair || p.fluffy) ? `
-      <path d="M132 184 q-14 34 -2 66 q16 16 30 2 q16 14 30-2 q12-32-2-66 q-28 16-56 0z" fill="${shade(fill, 18)}"/>
-      <path d="M132 184 q28 16 56 0" stroke="${outline}" stroke-width="2" fill="none" opacity=".28"/>` : '';
+    /* 胸毛（長毛・ふわふわ） */
+    const ruff = (p.longhair || p.fluffy) ? `<path d="${scallop(160, 230, 44, 9, 8)}" fill="${mix(fill, '#FFF6EC', 0.18)}" stroke="${OUTLINE}" stroke-width="2.4" stroke-linejoin="round"/>` : '';
 
-    const cheekRuff = (p.ruff || 0) > 0 ? `
-      <path d="M108 142 q-20 18-6 40 q14 4 20-8z" fill="${shade(fill, 12)}" opacity="${Math.min(1, p.ruff)}"/>
-      <path d="M212 142 q20 18 6 40 q-14 4-20-8z" fill="${shade(fill, 12)}" opacity="${Math.min(1, p.ruff)}"/>` : '';
+    /* 頬毛（メインクーンなど） */
+    const cheekRuff = (p.ruff || 0) > 0 ? `<g opacity="${Math.min(1, 0.55 + (p.ruff || 0) * 0.45)}">
+      <path d="${scallop(102, 152, 26, 6, 8)}" fill="${mix(fill, '#FFF6EC', 0.16)}" stroke="${OUTLINE}" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="${scallop(218, 152, 26, 6, 8)}" fill="${mix(fill, '#FFF6EC', 0.16)}" stroke="${OUTLINE}" stroke-width="2.4" stroke-linejoin="round"/>
+    </g>` : '';
 
-    const tufts = (p.earTufts || 0) > 0 ? `
-      <path d="M98 34 l-13 -15 l15 3z" fill="${shade(stripe, 6)}"/>
-      <path d="M222 34 l13 -15 l-15 3z" fill="${shade(stripe, 6)}"/>` : '';
-
-    const earFill = (p.pattern === 'pointed' || p.pattern === 'mask') ? stripe : fill;
-    const earPink = stage === 'kitten' ? '#F5AEB6' : '#E8A0A6';
-
-    const cowlick = stage === 'kitten' ? `
-      <g stroke="${outline}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".28">
-        <path d="M152 84 q6 -11 15 -7"/><path d="M160 82 q2 -11 11 -11"/>
-      </g>` : '';
-
-    const legs = `
-      <path d="M128 262 q0 -8 8 -8 h20 q8 0 8 8 v46 q0 12 -12 12 h-12 q-12 0 -12 -12z" fill="url(#${u}-leg)"/>
-      <path d="M164 262 q0 -8 8 -8 h20 q8 0 8 8 v46 q0 12 -12 12 h-12 q-12 0 -12 -12z" fill="url(#${u}-leg)"/>
-      <ellipse cx="140" cy="318" rx="15" ry="9" fill="${shade(fill, 12)}" opacity=".5"/>
-      <ellipse cx="180" cy="318" rx="15" ry="9" fill="${shade(fill, 12)}" opacity=".5"/>
-      <path d="M160 268 v48" stroke="${outline}" stroke-width="1.6" opacity=".16" stroke-linecap="round"/>
-      <g stroke="${outline}" stroke-width="1.4" opacity=".22" stroke-linecap="round">
-        <path d="M133 314 v6"/><path d="M140 314 v6"/><path d="M147 314 v6"/>
-        <path d="M173 314 v6"/><path d="M180 314 v6"/><path d="M187 314 v6"/>
+    /* 耳先の房毛（オオヤマネコ・カラカル） */
+    const tufts = (p.earTufts || 0) > 0 ? (() => {
+      const tipL = g.segs[0][2];
+      const tipR = mir(tipL);
+      return `<g stroke="${OUTLINE}" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".9">
+        <path d="M${tipL[0]} ${tipL[1] + 3} l-4 -14"/><path d="M${tipL[0] + 6} ${tipL[1] + 4} l2 -12"/>
+        <path d="M${tipR[0]} ${tipR[1] + 3} l4 -14"/><path d="M${tipR[0] - 6} ${tipR[1] + 4} l-2 -12"/>
       </g>`;
+    })() : '';
 
-    const decor = `
-      <g fill="#FFF6EC" opacity=".62">
-        <g transform="translate(274 302) rotate(-12)">
-          <ellipse cx="0" cy="4" rx="9" ry="7.5"/>
-          <circle cx="-10" cy="-7" r="3.8"/><circle cx="-3.4" cy="-11.5" r="3.8"/>
-          <circle cx="3.4" cy="-11.5" r="3.8"/><circle cx="10" cy="-7" r="3.8"/>
-        </g>
-        <g transform="translate(40 62) rotate(16) scale(.66)">
-          <ellipse cx="0" cy="4" rx="9" ry="7.5"/>
-          <circle cx="-10" cy="-7" r="3.8"/><circle cx="-3.4" cy="-11.5" r="3.8"/>
-          <circle cx="3.4" cy="-11.5" r="3.8"/><circle cx="10" cy="-7" r="3.8"/>
-        </g>
-      </g>
-      <g fill="#FFF6EC" opacity=".8">
-        <path d="M262 58 l3 8 l8 3 l-8 3 l-3 8 l-3-8 l-8-3 l8-3z"/>
-        <path d="M60 246 l2 6 l6 2 l-6 2 l-2 6 l-2-6 l-6-2 l6-2z"/>
-        <circle cx="96" cy="34" r="2.4"/><circle cx="286" cy="170" r="2"/>
-      </g>`;
+    /* 耳の内側 */
+    const earPink = p.pattern === 'pointed' ? mix(stripe, '#D9A3A8', 0.22)
+      : p.mane ? mix(fill, '#C98188', 0.22)
+        : (stage === 'kitten' ? '#F6B3BB' : '#EBA0A8');
+    const ears = `<g clip-path="url(#${u}-earL)"><path d="${innerEarD(g.segs, false)}" fill="${earPink}"/></g>
+      <g clip-path="url(#${u}-earR)"><path d="${innerEarD(g.segs, true)}" fill="${earPink}"/></g>`;
 
-    const bodyPath = stage === 'kitten' ? KITTEN_BODY : BODY_PATH;
+    /* ポイント柄（シャムなど）は耳の外側まで濃く */
+    const darkEars = p.pattern === 'pointed'
+      ? `<g clip-path="url(#${u}-head)"><path d="${earShapeD(g.segs, false)}" fill="${shade(stripe, 4)}"/><path d="${earShapeD(g.segs, true)}" fill="${shade(stripe, 4)}"/></g>`
+      : '';
+
+    /* 毛が薄い子（スフィンクス）のシワ */
+    const wrinkles = p.hairless ? `<g stroke="${mix(fill, '#8a5a48', 0.35)}" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".45">
+      <path d="M128 108 q12 -8 24 -5"/><path d="M170 104 q12 -3 22 6"/>
+      <path d="M136 122 q10 -6 20 -3"/><path d="M172 120 q10 -3 18 3"/>
+    </g>` : '';
+
+    const pawFill = p.pattern === 'pointed' ? shade(stripe, 14) : fill;
+    const toes = `<g stroke="${OUTLINE}" stroke-width="2" fill="none" stroke-linecap="round" opacity=".28">
+      <path d="M132 314 q1 7 0 10"/><path d="M142 314 q-1 7 0 10"/>
+      <path d="M178 314 q1 7 0 10"/><path d="M188 314 q-1 7 0 10"/>
+    </g>`;
+
+    const headT = `translate(160 150) scale(${g.headScale}) translate(-160 -150)`;
+    const bodyT = `translate(160 330) scale(${g.bodyScale}) translate(-160 -330)`;
+
+    const decor = `<g fill="#FFF8EE" opacity=".55">
+      <path d="M272 92 l2.6 7 l7 2.6 l-7 2.6 l-2.6 7 l-2.6 -7 l-7 -2.6 l7 -2.6z"/>
+      <path d="M44 150 l2 5.4 l5.4 2 l-5.4 2 l-2 5.4 l-2 -5.4 l-5.4 -2 l5.4 -2z" opacity=".8"/>
+      <circle cx="288" cy="200" r="2.2"/><circle cx="30" cy="112" r="1.8"/>
+    </g>`;
+
+    const rainbow = closed
+      ? `<path d="M36 316 A124 124 0 0 1 284 316" fill="none" stroke="url(#${u}-rb)" stroke-width="11" opacity=".32" stroke-linecap="round"/>`
+      : '';
 
     const svg = `
 <svg viewBox="0 0 320 360" xmlns="http://www.w3.org/2000/svg" class="cat-svg" role="img" aria-label="${escapeAttr(cat.speciesName || '猫')}のイラスト">
   <defs>
     <clipPath id="${u}-frame"><rect width="320" height="360" rx="26"/></clipPath>
-    <clipPath id="${u}-body"><path d="${bodyPath}"/></clipPath>
-    <clipPath id="${u}-head">
-      <circle cx="${H.x}" cy="${H.y}" r="${H.r}"/>
-      <polygon points="${pts(g.ears.l)}"/>
-      <polygon points="${pts(g.ears.r)}"/>
-    </clipPath>
+    <clipPath id="${u}-body"><path d="${BODY_PATH}"/></clipPath>
+    <clipPath id="${u}-head"><path d="${g.headPath}"/></clipPath>
+    <clipPath id="${u}-earL"><path d="${earShapeD(g.segs, false)}"/></clipPath>
+    <clipPath id="${u}-earR"><path d="${earShapeD(g.segs, true)}"/></clipPath>
+    <linearGradient id="${u}-leg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${shade(pawFill, 18)}"/><stop offset="1" stop-color="${shade(pawFill, -12)}"/>
+    </linearGradient>
+    <linearGradient id="${u}-rb" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F3A6A6"/><stop offset=".25" stop-color="#F6D49B"/>
+      <stop offset=".5" stop-color="#BFE0A8"/><stop offset=".75" stop-color="#A9CDEF"/>
+      <stop offset="1" stop-color="#CDB4E4"/>
+    </linearGradient>
     <linearGradient id="__win" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#20304D"/><stop offset="1" stop-color="#3D5A7A"/>
     </linearGradient>
     <linearGradient id="__city" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#A8C2D8"/><stop offset="1" stop-color="#E6EEF4"/>
     </linearGradient>
-    <linearGradient id="${u}-leg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${shade(fill, 14)}"/><stop offset="1" stop-color="${shade(fill, -14)}"/>
-    </linearGradient>
-    <radialGradient id="${u}-glow" cx=".5" cy=".42" r=".55">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".5"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
-    </radialGradient>
   </defs>
   ${sceneSVG(scene, u)}
   <g clip-path="url(#${u}-frame)">
-    <rect width="320" height="360" fill="#FFF6EC" opacity="${stage === 'kitten' ? 0.34 : 0.26}"/>
+    <rect width="320" height="360" fill="#FFF6EC" opacity="${stage === 'kitten' ? 0.3 : 0.22}"/>
   </g>
-  <ellipse cx="160" cy="333" rx="${(86 * bs).toFixed(1)}" ry="${(13 * bs).toFixed(1)}" fill="#000" opacity=".13"/>
-  <ellipse cx="160" cy="150" rx="126" ry="126" fill="url(#${u}-glow)" opacity=".45"/>
+  ${rainbow}
+  <ellipse cx="160" cy="334" rx="${(86 * g.bodyScale).toFixed(1)}" ry="${(11 * g.bodyScale).toFixed(1)}" fill="#3a2a1e" opacity=".12"/>
   <g transform="${bodyT}">
-    ${tailPath}
+    ${tail}
+    <path d="${BODY_PATH}" fill="${fill}"/>
     <g clip-path="url(#${u}-body)">
-      <rect width="320" height="360" fill="${fill}"/>
-      ${pattern}
-      <ellipse cx="160" cy="200" rx="58" ry="34" fill="#FFFFFF" opacity=".1"/>
-      <ellipse cx="160" cy="300" rx="70" ry="46" fill="#000" opacity=".07"/>
+      ${bodyPat}
+      <ellipse cx="160" cy="222" rx="56" ry="28" fill="#FFFFFF" opacity=".07"/>
+      <ellipse cx="160" cy="322" rx="66" ry="38" fill="#2b1d12" opacity=".06"/>
     </g>
-    <path d="${bodyPath}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
-    ${legs}
+    <path d="${BODY_PATH}" fill="none" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
     ${ruff}
+    <path d="${LEG_L}" fill="url(#${u}-leg)" stroke="${OUTLINE}" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="${LEG_R}" fill="url(#${u}-leg)" stroke="${OUTLINE}" stroke-width="2.6" stroke-linejoin="round"/>
+    ${toes}
   </g>
   <g transform="${headT}">
     ${mane}
-    <polygon points="${pts(g.ears.l)}" fill="${earFill}"/>
-    <polygon points="${pts(g.ears.r)}" fill="${earFill}"/>
-    <path d="M${g.ears.l[0][0]} ${g.ears.l[0][1]} L${g.ears.l[1][0]} ${g.ears.l[1][1]} L${g.ears.r[1][0]} ${g.ears.r[1][1]} L${g.ears.r[0][0]} ${g.ears.r[0][1]} Z" fill="${fill}"/>
+    <path d="${g.headPath}" fill="${fill}"/>
     <g clip-path="url(#${u}-head)">
-      <rect width="320" height="360" fill="${fill}"/>
-      ${pattern}
-      <ellipse cx="160" cy="${H.y - 26}" rx="52" ry="28" fill="#FFFFFF" opacity=".08"/>
+      ${headPat}
+      <ellipse cx="160" cy="96" rx="42" ry="22" fill="#FFFFFF" opacity=".08"/>
     </g>
-    <polygon points="${pts(g.ears.l)}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
-    <polygon points="${pts(g.ears.r)}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".3"/>
-    <polygon points="${pts(inset(g.ears.l, 0.58))}" fill="${earPink}" opacity=".85"/>
-    <polygon points="${pts(inset(g.ears.r, 0.58))}" fill="${earPink}" opacity=".85"/>
+    ${darkEars}
+    ${ears}
     ${cheekRuff}
+    ${wrinkles}
+    <path d="${g.headPath}" fill="none" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
     ${tufts}
-    ${cowlick}
-    <circle cx="${H.x}" cy="${H.y}" r="${H.r}" fill="none" stroke="${outline}" stroke-width="2.2" opacity=".38"/>
-    ${faceSVG(cat, g, eye1, eye2, outline, fill, stage, closed)}
-    ${p.hairless ? `<g stroke="${shade(fill, 14)}" stroke-width="1.3" opacity=".45"><path d="M134 118 q10-8 18-3"/><path d="M168 115 q10-6 18 3"/><path d="M124 240 q8 10 0 20"/></g>` : ''}
+    ${faceSVG(g, c, eye1, eye2, stage, closed)}
   </g>
-  <rect x="7" y="7" width="306" height="346" rx="22" fill="none" stroke="#FFF6EC" stroke-width="2.5" stroke-dasharray="7 10" opacity=".5"/>
   ${decor}
 </svg>`;
     return svg.replace(/\n\s+/g, '\n');
