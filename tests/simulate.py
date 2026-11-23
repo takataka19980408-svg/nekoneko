@@ -112,11 +112,12 @@ def run(ctx):
         scene0: CATART.sceneKeyFor(c, 0),
         sceneLast: CATART.sceneKeyFor(c, story.length - 1),
         adopted: c.adoptIndex != null,
+        shelterBorn: !!c.shelterBorn,
         adoptIndex: c.adoptIndex == null ? null : c.adoptIndex,
         adoptOk: (c.adoptIndex == null) ? true : (
           story[c.adoptIndex] && story[c.adoptIndex].kind === 'adopt' &&
           CATART.sceneKeyFor(c, c.adoptIndex) === 'home' &&
-          CATART.sceneKeyFor(c, c.adoptIndex - 1) !== 'home'
+          (c.route === 'owned' || CATART.sceneKeyFor(c, c.adoptIndex - 1) !== 'home')
         ),
         adoptBeforeDeath: (c.adoptIndex == null) ? true : (c.adoptIndex < story.length - 1),
         statsOk: [0, 1, 2, 3, 4, 5, 6].every(function(k){
@@ -328,7 +329,7 @@ def main():
     print("\n--- 拾われる体験 ---")
     adopted = [c for c in cats if c["adopted"]]
     print(f"  拾われた猫: {len(adopted)}頭 ({pct(len(adopted), n)})")
-    for route in ("street", "community", "feral"):
+    for route in ("street", "community", "feral", "owned"):
         xs = [c for c in cats if c["route"] == route]
         ys = [c for c in xs if c["adopted"]]
         if xs:
@@ -337,7 +338,7 @@ def main():
     check(all(c["adoptOk"] for c in adopted), "拾われたステップ/背景の切り替えが不正")
     check(all(c["adoptBeforeDeath"] for c in adopted), "拾われるのが最期ステップ以降になっている")
     check(all(c["sceneLast"] == "home" for c in adopted), "拾われた猫の最期が家の背景でない")
-    check(all(c["route"] in ("street", "community", "feral") for c in adopted), "飼い猫や野生種が拾われている")
+    check(all(c["route"] in ("street", "community", "feral") or c["shelterBorn"] for c in adopted), "保護施設生まれ以外の飼い猫や野生種が拾われている")
     check(not any(c["adopted"] for c in cats if c["klass"] == "wild"), "野生ネコ科が拾われている")
 
     # ---- アセット/演出 ----

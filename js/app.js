@@ -150,7 +150,7 @@
         <span class="page-no">${idx + 1}/${cat.story.length}</span>
       </div>
       ${isBirth ? `<p class="born-line">🌏 ${bornLine(cat)}</p>` : ''}
-      <h2 class="page-title">${isDeath ? '🌈 最期' : isAdopt ? '🏡 拾われる' : '【' + step.title + '】'}</h2>
+      <h2 class="page-title">${isDeath ? '🌈 最期' : isAdopt ? '🏡 ' + (step.adoptTitle || '拾われる') : '【' + step.title + '】'}</h2>
       <p class="page-text">${step.text}</p>
       ${isBirth ? traitsHTML(cat) : ''}
       ${step.choice ? choiceHTML(step, pick) : ''}

@@ -562,13 +562,18 @@
     ],
     feral: [
       '罠にかかって保護された。ケージの前で毎日話しかけてくる人がいて、ある日、逃げなかった。'
+    ],
+    owned: [
+      '保護施設の見学会で、家族が「この子」と指をさした。その日から、家の猫。',
+      'ケージの前で毎日立ち止まる人がいて、とうとう家に連れて帰られた。'
     ]
   };
 
-  /* 野良・地域猫・野生化したイエネコだけが、途中で人間に拾われることがある */
+  /* 野良・地域猫・野生化したイエネコ、そして保護施設生まれの子が、途中で人に拾われる */
   function adoptionRoll(cat, rng) {
     if (!cat || cat.klass === 'wild' || cat.special) return false;
     const route = cat.route;
+    if (route === 'owned' && cat.shelterBorn) return chance(0.8, rng);
     if (route !== 'street' && route !== 'community' && route !== 'feral') return false;
     const p = route === 'community' ? 0.42 : route === 'street' ? 0.30 : 0.10;
     return chance(p, rng);
@@ -644,13 +649,14 @@
 
       if (i === adoptSlot) {
         const text = pick(ADOPT_TEXTS[cat.route] || ADOPT_TEXTS.street, rng);
+        const adoptTitle = cat.route === 'owned' ? '家族に迎えられる' : '拾われる';
         cat.adopted = true;
         cat.adoptIndex = i;
-        cat.adoptTitle = '拾われる';
+        cat.adoptTitle = adoptTitle;
         cat.adoptText = text;
         steps.push({
-          kind: 'adopt', age: a, ageLabel: ageLabel(a), stage, title: '拾われる',
-          text: text, adopted: true
+          kind: 'adopt', age: a, ageLabel: ageLabel(a), stage, title: adoptTitle,
+          adoptTitle: adoptTitle, text: text, adopted: true
         });
         continue;
       }
@@ -709,11 +715,14 @@
           ? 'ヘミングウェイ博物館の裏庭で、6本指の血を引く子として生まれる。'
           : '首相官邸の一角で、白黒の子猫として生まれる。';
       }
-      return pick([
+      const homes = [
         `${cat.region.name}・${cat.city}の家の押し入れで、きょうだい${sib}匹の${pos}として生まれる。`,
         `${cat.region.name}・${cat.city}の窓辺で、きょうだい${sib}匹の${pos}として生まれる。`,
         `${cat.region.name}・${cat.city}の保護施設で、きょうだい${sib}匹の${pos}として生まれる。`
-      ], rng);
+      ];
+      const home = homes[Math.floor(rng() * homes.length) % homes.length];
+      if (home === homes[2]) cat.shelterBorn = true;
+      return home;
     }
     if (cat.route === 'community') {
       return `${cat.region.name}・${cat.city}の路地の奥で、地域の人が見守る中、きょうだい${sib}匹の${pos}として生まれる。`;
