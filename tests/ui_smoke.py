@@ -13,7 +13,7 @@ import quickjs
 
 ROOT = Path(__file__).resolve().parent.parent
 JS_FILES = [
-    "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js",
+    "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js", "js/events.js",
     "js/data.js", "js/engine.js", "js/catart.js",
 ]
 
@@ -146,36 +146,85 @@ def main():
     if not ctx.eval("document.getElementById('homeScreen').hidden"):
         print("[NG] ホーム画面が隠れていない")
         return 1
+    # --- 誕生画面：静止して「この子はだれか」「どれだけ珍しいか」を見せる ---
     card = ctx.eval("document.getElementById('pageWrap').innerHTML")
-    if len(card) < 500 or "page-title" not in card or "享年" in card or "chips" not in card:
-        print("[NG] 誕生カードが不正（享年が出ている/描画されていない）", len(card))
+    for need in ("page--birth", "birth-name", "この子はこんな猫", "国・地域", "種別", "境遇",
+                 "性別", "目の色", "地球約10億匹中", "分の1", "仲間は", "珍しいポイント・豆知識"):
+        if need not in card:
+            print("[NG] 誕生カードに不足:", need, len(card))
+            return 1
+    if "享年" in card or "undefined" in card or "NaN" in card:
+        print("[NG] 誕生カードに享年/undefined/NaN が出ている")
         return 1
-    print("誕生カード文字数:", len(card), "/ 享年なし OK")
+    print("誕生カード文字数:", len(card), "/ プロフィール＋珍しさ OK")
 
-    # --- オート進行（デフォルトON・速度切替・選択肢で一時停止） ---
+    np = ctx.eval("document.getElementById('nameplate').innerHTML")
+    for need in (ctx.eval("CATAPP.state.current.name"),
+                 ctx.eval("CATAPP.state.current.speciesName"),
+                 ctx.eval("CATGACHA.formatOneIn(CATAPP.state.current.probability)"),
+                 ctx.eval("CATGACHA.statusOf(CATAPP.state.current, 0).text")):
+        if need not in np:
+            print("[NG] 名札に不足:", need)
+            return 1
+    if "np-age" not in np or "np-facts" not in np:
+        print("[NG] 名札のレイアウト要素がない")
+        return 1
+    print("名札:", np.replace("\n", " ")[:180].strip())
+
+    # --- 誕生画面では止まっている（オートはまだ始まらない） ---
+    if ctx.eval("CATAPP.state.started"):
+        print("[NG] 誕生の瞬間からオートが始まっている")
+        return 1
+    if ctx.eval("CATAPP.state.autoTimer") not in (0, None):
+        print("[NG] 誕生画面でオートのタイマーが予約されている")
+        return 1
+    if not ctx.eval("document.getElementById('autoBar').hidden"):
+        print("[NG] 誕生画面でオートバーが出ている")
+        return 1
+    if "この子の猫生を歩む" not in ctx.eval("document.getElementById('walkText').textContent"):
+        print("[NG] 誕生画面のボタンが「この子の猫生を歩む」でない")
+        return 1
+    print("誕生画面は静止: OK（スタートボタン待ち）")
+
+    # --- 「この子の猫生を歩む」でオート進行スタート ---
+    ctx.eval("__handlers['walkBtn:click'][0]()")
+    if not ctx.eval("CATAPP.state.started"):
+        print("[NG] スタートボタンでオートが始まらない")
+        return 1
+    if ctx.eval("CATAPP.state.step") != 1:
+        print("[NG] スタートで1歩目に進んでいない")
+        return 1
+    if ctx.eval("document.getElementById('autoBar').hidden"):
+        print("[NG] スタート後もオートバーが隠れている")
+        return 1
+    # 1歩目がいきなり2択のこともある（その場合は選ぶと再開する）
+    if ctx.eval("!!CATAPP.state.current.story[CATAPP.state.step].choice"):
+        print("スタート直後が2択: 選んで再開を確認")
+        ctx.eval("CATAPP.choose(0)")
+    if ctx.eval("CATAPP.state.autoTimer") in (0, None):
+        print("[NG] スタート後にオートのタイマーが予約されていない")
+        return 1
+    note = ctx.eval("document.getElementById('autoNote').textContent")
+    print("スタート後のオート:", note)
+    if "3.8" not in note:
+        print("[NG] 1x の間隔が3.8秒になっていない:", note)
+        return 1
+
+    # --- オート進行（速度切替・選択肢で一時停止） ---
     if not ctx.eval("CATAPP.state.auto"):
         print("[NG] オートがデフォルトONになっていない")
         return 1
-    btn = ctx.eval("document.getElementById('autoBtnText').textContent")
-    note = ctx.eval("document.getElementById('autoNote').textContent")
-    print("オート:", ctx.eval("CATAPP.state.auto"), "/ ボタン:", btn, "/ note:", note)
-    if "秒" not in note:
-        print("[NG] オートの説明が出ていない:", note)
-        return 1
-    if ctx.eval("CATAPP.state.autoTimer") == 0:
-        print("[NG] オートのタイマーが予約されていない")
-        return 1
-    # 2x に切り替えると間隔が1.2秒になる
+    # 2x に切り替えると間隔が1.9秒になる
     ctx.eval("__handlers['speed2:click'][0]()")
     if ctx.eval("CATAPP.state.speed") != 2:
         print("[NG] 2x に切り替わらない")
         return 1
-    if "1.2" not in ctx.eval("document.getElementById('autoNote').textContent"):
-        print("[NG] 2x の説明が1.2秒になっていない")
+    if "1.9" not in ctx.eval("document.getElementById('autoNote').textContent"):
+        print("[NG] 2x の説明が1.9秒になっていない")
         return 1
     ctx.eval("__handlers['speed1:click'][0]()")
-    if "2.5" not in ctx.eval("document.getElementById('autoNote').textContent"):
-        print("[NG] 1x の説明が2.5秒になっていない")
+    if "3.8" not in ctx.eval("document.getElementById('autoNote').textContent"):
+        print("[NG] 1x の説明が3.8秒になっていない")
         return 1
     # autoTick で1歩進む
     step0 = ctx.eval("CATAPP.state.step")
@@ -264,7 +313,11 @@ def main():
               last: CATART.sceneKeyFor(c, c.story.length - 1),
               collar: CATART.actorHTML(c, {stage: c.story[c.adoptIndex].stage}).indexOf('collarBadge') >= 0,
               html: CATAPP.buildStepHTML(c, c.adoptIndex, {}),
-              maneki: !!c.maneki
+              maneki: !!c.maneki,
+              npBefore: CATAPP.nameplateHTML(c, c.adoptIndex - 1),
+              npAfter: CATAPP.nameplateHTML(c, c.adoptIndex),
+              statusBefore: CATGACHA.statusOf(c, c.adoptIndex - 1).text,
+              statusAfter: CATGACHA.statusOf(c, c.adoptIndex).text
             });
           }
         }
@@ -282,6 +335,46 @@ def main():
         print("[NG] 拾われたカードの表示が不正")
         return 1
     print(f"拾われる体験: seed {ad['i']} / {ad['route']} / {ad['before']} → {ad['after']} / 首輪 OK")
+
+    # 名札の境遇が「野良猫 → 🏡 拾われて飼い猫に」に切りかわる
+    print("名札の境遇:", ad["statusBefore"], "→", ad["statusAfter"])
+    if ad["statusBefore"] == ad["statusAfter"]:
+        print("[NG] 拾われても名札の境遇が変わらない")
+        return 1
+    if not any(k in ad["statusAfter"] for k in ("拾われて", "迎えられた", "招き猫")):
+        print("[NG] 拾われた後の境遇表示が不正:", ad["statusAfter"])
+        return 1
+
+    # 長い猫生（15歳前後）はパワーアップした進捗バーになる
+    prog = ctx.eval("""
+      (function(){
+        for (var s = 1; s <= 4000; s++) {
+          var c = CATGACHA.rollCat(s * 104729);
+          if (c.ageYears >= 14 && c.ageYears <= 16 && !c.nekomata) {
+            return JSON.stringify({
+              age: c.ageYears, len: c.story.length,
+              html: CATAPP.progressHTML(c, 10),
+              steps15: CATGACHA.storyStepCount(15),
+              steps1: CATGACHA.storyStepCount(1),
+              stepsHalf: CATGACHA.storyStepCount(0.5),
+              seconds: 52 * 3.8
+            });
+          }
+        }
+        return '{}';
+      })()
+    """)
+    pg = json.loads(prog)
+    print("15歳前後の猫生:", {k: pg[k] for k in ("age", "len", "steps15", "steps1", "stepsHalf") if k in pg})
+    if not pg or "paw-bar" not in pg["html"]:
+        print("[NG] 長い猫生の進捗バーが出ていない")
+        return 1
+    if not (45 <= pg["steps15"] <= 60):
+        print("[NG] 15歳の歩数が45〜60でない:", pg["steps15"])
+        return 1
+    if not (4 <= pg["stepsHalf"] <= 8):
+        print("[NG] 1歳未満の歩数が4〜8でない:", pg["stepsHalf"])
+        return 1
     cur_step = ctx.eval("CATAPP.state.current.story[CATAPP.state.step]")
     if ctx.eval("!!CATAPP.state.current.story[CATAPP.state.step].choice && CATAPP.state.current.story[CATAPP.state.step].chosen == null"):
         # 2択の途中なら「歩む」は隠れているのが正しい（選択肢で休む仕様）
@@ -296,7 +389,7 @@ def main():
     # --- 猫生を歩む（2択は先に選ぶ） ---
     ctx.eval("""
       var guard = 0;
-      while (guard++ < 40) {
+      while (guard++ < 120) {
         var st = CATAPP.state.current.story[CATAPP.state.step];
         if (st.kind === 'death') break;
         if (st.choice && st.chosen == null) {

@@ -161,6 +161,15 @@
     nekomata: ['🔮', '🌙', '✨'], maneki: ['💰', '🏮', '✨']
   };
 
+  /* 季節のパーティクル（家・路地・集落など、季節がめぐる場所） */
+  const SEASON_PARTICLES = {
+    spring: ['🌸', '✨', '🌱'],
+    summer: ['☀️', '🌻', '✨'],
+    autumn: ['🍁', '🍂', '✨'],
+    winter: ['❄️', '✨', '⛄']
+  };
+  const SEASON_SCENES = { home: 1, shop: 1, alley: 1, village: 1, temple: 1 };
+
   function particlesFor(cat, idx, dead) {
     if (dead) {
       if (cat && cat.nekomata) return PARTICLES.nekomata;
@@ -168,7 +177,11 @@
       return PARTICLES.finale;
     }
     if (cat && cat.nekomata && cat.story && idx != null && cat.story[idx] && cat.story[idx].age >= 100) return PARTICLES.nekomata;
-    return PARTICLES[sceneKeyFor(cat, idx)] || PARTICLES.home;
+    const key = sceneKeyFor(cat, idx);
+    const step = cat && cat.story && idx != null ? cat.story[idx] : null;
+    const season = step && step.season;
+    if (season && SEASON_PARTICLES[season] && SEASON_SCENES[key]) return SEASON_PARTICLES[season];
+    return PARTICLES[key] || PARTICLES.home;
   }
 
   /* 決定的な擬似乱数（同じ猫はいつも同じ表情） */

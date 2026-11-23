@@ -354,6 +354,7 @@
     cat.probability = cat.population / D.TOTAL;
     cat.rarity = rarityOf(cat);
     cat.ageLabel = ageLabel(cat.ageYears);
+    cat.birthMonth = Math.floor(rng() * 12);
     cat.bornPlace = cat.klass === 'wild'
       ? (cat.route === 'zoo' ? cat.address : cat.species.range)
       : cat.region.name + (cat.city && cat.city !== cat.region.name ? '・' + cat.city : '');
@@ -412,6 +413,120 @@
     return '約' + one.toFixed(1) + '分の1';
   }
 
+  /* ---------- 境遇（常時プロフィールバーの名札） ---------- */
+  const STATUS_VIEW = {
+    owned: { icon: '🏠', label: '飼い猫', tone: '' },
+    purebred: { icon: '📜', label: '血統書つきの飼い猫', tone: '' },
+    community: { icon: '🏘', label: '地域猫', tone: 'out' },
+    street: { icon: '🌃', label: '野良猫', tone: 'out' },
+    feral: { icon: '🌿', label: '野生化したイエネコ', tone: 'out' },
+    wild: { icon: '🐆', label: '野生のネコ科', tone: 'wild' },
+    zoo: { icon: '🎪', label: '動物園生まれ', tone: 'wild' }
+  };
+
+  const IUCN_JP = {
+    EX: '絶滅', EW: '野生絶滅', CR: '絶滅危惧IA類', EN: '絶滅危惧IB類',
+    VU: '絶滅危惧II類', NT: '準絶滅危惧', LC: '低懸念', DD: '情報不足', NE: '未評価'
+  };
+
+  function storyIndex(cat, idx) {
+    const n = cat && cat.story ? cat.story.length : 0;
+    if (!n) return 0;
+    const i = idx == null ? 0 : Math.floor(idx);
+    return Math.max(0, Math.min(i, n - 1));
+  }
+
+  /* その時点までにボス猫になっているか */
+  function bossAt(cat, idx) {
+    if (!cat || !cat.story) return false;
+    const i = storyIndex(cat, idx);
+    for (let k = 0; k <= i; k++) {
+      const s = cat.story[k];
+      if (s && s.choice && s.chosen != null) {
+        const o = s.choice.options[s.chosen];
+        if (o && o.effect && o.effect.boss) return true;
+      }
+    }
+    return false;
+  }
+
+  /* その時点の境遇。拾われる／ボス猫／猫又／招き猫で更新される。 */
+  function statusOf(cat, idx) {
+    if (!cat) return { icon: '', label: '', text: '', tone: '', extra: [], adopted: false };
+    const i = storyIndex(cat, idx);
+    const step = cat.story && cat.story[i];
+    const age = step ? Number(step.age) || 0 : 0;
+    const adoptedNow = cat.adoptIndex != null && i >= cat.adoptIndex;
+    let view;
+    if (cat.nekomata && age >= 100) view = { icon: '🔮', label: '猫又', tone: 'nekomata' };
+    else if (adoptedNow && cat.maneki) view = { icon: '🏮', label: '招き猫（看板猫）', tone: 'maneki' };
+    else if (adoptedNow) view = (cat.route === 'owned' || cat.route === 'purebred')
+      ? { icon: '🏡', label: '家族に迎えられた', tone: 'adopt' }
+      : { icon: '🏡', label: '拾われて飼い猫に', tone: 'adopt' };
+    else if (cat.klass === 'wild') view = cat.route === 'zoo' ? STATUS_VIEW.zoo : STATUS_VIEW.wild;
+    else if (cat.special) view = { icon: '⭐', label: cat.special.name, tone: 'rare' };
+    else view = STATUS_VIEW[cat.route] || { icon: '🏠', label: cat.statusLabel || '猫', tone: '' };
+
+    const extra = [];
+    if (bossAt(cat, i) && !(cat.nekomata && age >= 100)) extra.push({ icon: '👑', label: 'ボス猫' });
+    return {
+      icon: view.icon, label: view.label, text: view.icon + ' ' + view.label, tone: view.tone || '',
+      extra: extra, adopted: adoptedNow && cat.route !== 'owned' && cat.route !== 'purebred'
+    };
+  }
+
+  /* ---------- 珍しさアピール（誕生画面の豆知識） ---------- */
+  function rarityPoints(cat) {
+    const out = [];
+    if (!cat) return out;
+    const sp = cat.species || null;
+
+    if (cat.klass === 'wild') {
+      if (sp && sp.note) out.push('🐆 ' + sp.note);
+      if (sp && sp.range) out.push('📍 生息地は' + sp.range + '。');
+      if (sp && sp.pop) {
+        out.push('🌍 世界の推定生息数は' + formatCount(sp.pop) + '。'
+          + (sp.iucn ? 'IUCNレッドリスト ' + sp.iucn + '（' + (IUCN_JP[sp.iucn] || '') + '）。' : ''));
+      }
+      if (cat.speciesGroup === 'big' || cat.speciesGroup === 'island') {
+        out.push('🦁 大型・島のネコ科は図鑑でも最上位クラス。出会えたら自慢できる。');
+      }
+      if (cat.route === 'zoo') out.push('🎪 動物園生まれ。ガラスの向こうから、毎日誰かが見ている一生。');
+    } else if (cat.route === 'purebred') {
+      out.push('📜 血統書つきの純血種。飼い猫のうち、血統書があるのは約1.2%だけ。');
+      if (cat.breed && cat.breed.desc) out.push('✨ ' + cat.breed.desc);
+      if (cat.breed && cat.breed.health && cat.healthPenalty) {
+        out.push('🩺 ' + cat.breed.health + 'が出やすい宿命も背負っている。');
+      }
+    } else if (cat.special) {
+      out.push('⭐ 特別枠の猫。' + (cat.pattern && cat.pattern.desc ? cat.pattern.desc : '世界に数えるほどしかいない。'));
+    } else if (cat.pattern && cat.pattern.desc) {
+      out.push('🐾 ' + cat.pattern.desc);
+    }
+
+    (cat.mutations || []).forEach(m => {
+      if (!m) return;
+      out.push(m.note ? '🌟 ' + m.name + '——' + m.note : '🌟 ' + m.name);
+    });
+
+    const around = {
+      owned: '🏠 家の中で、誰かに名前を呼ばれる一生。',
+      purebred: '📜 値段より長く生きられるかは、この子次第。',
+      community: '🏘 餌やりさんに見守られながら、外で生きる。',
+      street: '🌃 誰にも知られず生きる野良猫。人に拾われるかどうかで猫生が変わる。',
+      feral: '🌿 人の手を借りずに生きる、野生化したイエネコ。',
+      wild: '🌲 人に飼われない、野生の一生。',
+      zoo: '🎪 毎日決まった時間にごはんが来る、安全な一生。'
+    };
+    if (around[cat.route]) out.push(around[cat.route]);
+
+    if (cat.probability && cat.probability <= 1e-6) out.push('🌈 100万分の1クラス。この子に生まれるのは、宝くじ以上。');
+    else if (cat.probability && cat.probability <= 1e-5) out.push('💎 10万分の1クラス。この子はかなりのレア枠。');
+    else if (cat.population && cat.population < 1000) out.push('🔍 仲間は' + formatCount(cat.population) + '。出会えたら自慢できる。');
+
+    return out.slice(0, 5);
+  }
+
   /* ---------- 成長ステージ ---------- */
   const STAGES = ['kitten', 'adult', 'senior'];
   const STAGE_LABEL = { kitten: '子猫', adult: '成猫', senior: 'シニア猫' };
@@ -423,13 +538,65 @@
     return 'senior';
   }
 
-  /* 1猫生の歩数（誕生と最期を含む）: 寿命に応じて3〜7 */
+  /* ---------- 1猫生の歩数（誕生と最期を含む） ----------
+     寿命に応じてスケールする。1歩 ≒ 3か月〜半年。
+     1歳≒8歩 / 5歳≒20歩 / 10歳≒35歩 / 15歳≒52歩 / 20歳≒62歩。
+     1x（3.8秒/歩）で15歳の猫生が約3分20秒＋2択の時間になる。 */
+  const STEP_TABLE = [
+    [0.08, 4], [0.3, 5], [0.6, 6], [1, 8], [2, 11.5], [3, 14], [5, 20],
+    [7, 27], [10, 35], [12, 43], [15, 52], [18, 58], [20, 62], [25, 70], [30, 76]
+  ];
+
   function storyStepCount(age) {
-    if (age < 1) return 3;
-    if (age < 3) return 4;
-    if (age < 6) return 5;
-    if (age < 12) return 6;
-    return 7;
+    const a = Math.max(0, Number(age) || 0);
+    if (a <= STEP_TABLE[0][0]) return STEP_TABLE[0][1];
+    for (let i = 1; i < STEP_TABLE.length; i++) {
+      if (a <= STEP_TABLE[i][0]) {
+        const p = STEP_TABLE[i - 1], q = STEP_TABLE[i];
+        const t = (a - p[0]) / ((q[0] - p[0]) || 1);
+        return Math.max(4, Math.round(p[1] + (q[1] - p[1]) * t));
+      }
+    }
+    return STEP_TABLE[STEP_TABLE.length - 1][1];
+  }
+
+  /* 歩数の多い猫生でも「3歳2か月」のように細かく年を刻む */
+  function ageLabelFine(y) {
+    const v = Math.max(0, Number(y) || 0);
+    if (v < 1) {
+      const m = Math.max(1, Math.round(v * 12));
+      return m >= 12 ? '1歳' : '生後' + m + 'か月';
+    }
+    const years = Math.floor(v);
+    let months = Math.round((v - years) * 12);
+    if (months >= 12) return (years + 1) + '歳';
+    if (months <= 0) return years + '歳';
+    return years + '歳' + months + 'か月';
+  }
+
+  /* ---------- 季節（年齢から決まる） ---------- */
+  const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+  const SEASON_LABEL = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' };
+  const SEASON_EMOJI = { spring: '🌸', summer: '🌻', autumn: '🍁', winter: '❄️' };
+
+  function seasonOfAge(age, offsetMonths) {
+    const m = Math.floor((Math.max(0, Number(age) || 0) * 12 + (Number(offsetMonths) || 0)) % 12);
+    if (m >= 2 && m <= 4) return 'spring';   // 3〜5月
+    if (m >= 5 && m <= 7) return 'summer';   // 6〜8月
+    if (m >= 8 && m <= 10) return 'autumn';  // 9〜11月
+    return 'winter';                          // 12〜2月
+  }
+
+  /* 個体ごとの誕生月をずらして、季節がばらけるようにする */
+  function seasonFor(cat, age) {
+    return seasonOfAge(age, cat && cat.birthMonth ? cat.birthMonth : 0);
+  }
+
+  function seasonLabel(season) {
+    return SEASON_LABEL[season] || '';
+  }
+  function seasonEmoji(season) {
+    return SEASON_EMOJI[season] || '';
   }
 
   const STORY_TITLES = {
@@ -764,8 +931,14 @@
       const k = Math.floor(rng() * (j + 1));
       const t = order[j]; order[j] = order[k]; order[k] = t;
     }
-    let wanted = n >= 4 ? (chance(0.55, rng) ? 3 : 2) : (chance(0.72, rng) ? 2 : 1);
-    wanted = Math.min(wanted, order.length);
+    /* 長い猫生ほど2択も増える（およそ8歩に1回） */
+    let wanted;
+    if (n >= 4) {
+      wanted = Math.max(2, Math.round(n / 8) + (chance(0.5, rng) ? 1 : 0));
+    } else {
+      wanted = chance(0.72, rng) ? 2 : 1;
+    }
+    wanted = Math.max(1, Math.min(wanted, order.length));
     const out = {};
     const used = [];
     let set = 0;
@@ -805,26 +978,6 @@
     return out;
   }
 
-  /* ---------- 寿命が延びたときの「その後」 ---------- */
-  const LATE_EVENTS = {
-    kitten: [
-      'もう少しだけ、こどもの時間が続くことになった。',
-      '小さな体のまま、もうひとつ季節を越える。'
-    ],
-    adult: [
-      '若いころより、少しだけ遠くまで歩かなくなった。それでも毎日、同じ道をたどる。',
-      '知らない子猫が近づいてきて、昔の自分を見るように見送った。',
-      'お気に入りの場所が、いつのまにか日だまりに変わっていた。',
-      '同じ夢を、もう一度見た気がした。'
-    ],
-    senior: [
-      '目が少し白くなって、名前を呼ばれるまで気づかないことが増えた。',
-      'ゆっくり起きて、ゆっくり歩いて、また眠る。そんな一日が続く。',
-      '若い猫に場所をゆずって、自分は一段高いところで眠るようになった。',
-      'ひなたの匂いを胸いっぱいに吸って、長いこと動かなかった。'
-    ]
-  };
-
   /* ---------- 超レア隠しルート① 猫又（100年） ---------- */
   const NEKOMATA_EVENTS = [
     { age: 2.5, text: 'ふつうの子猫として、ふつうに暮らしていた。この時点では、なにもおかしなことはない。' },
@@ -852,24 +1005,60 @@
     cat.ageLabel = ageLabel(cat.ageYears);
     cat.deathCause = 'nekomata';
 
+    /* 100年を66〜72歩で歩く。若い頃は細かく、後半はゆったり。 */
+    const total = 66 + Math.floor(rng() * 7);
+    const eventCount = Math.max(10, total - 2);
+
     const steps = [{
       kind: 'birth', age: 0, ageLabel: '生まれた日', stage: 'kitten', title: '誕生',
-      text: birthText(cat, rng)
+      season: seasonFor(cat, 0), text: birthText(cat, rng)
     }];
-    NEKOMATA_EVENTS.forEach((e, i) => {
-      const stage = stageForAge(e.age);
+
+    const pool = storyPool(cat);
+    const used = {};
+
+    const ages = [];
+    for (let k = 1; k <= eventCount - 1; k++) {
+      const t = k / eventCount;
+      ages.push(Math.round(99 * Math.pow(t, 1.3) * 100) / 100);
+    }
+
+    /* 百年の節目（2.5/6/12/20/35/50/65/80歳）を近いスロットに置く */
+    const anchorAt = {};
+    NEKOMATA_EVENTS.slice(0, 8).forEach((a, n) => {
+      let best = -1, bestD = Infinity;
+      ages.forEach((x, i) => {
+        const d = Math.abs(x - a.age);
+        if (d < bestD && anchorAt[i] == null) { bestD = d; best = i; }
+      });
+      if (best >= 0) {
+        anchorAt[best] = a.text;
+        used[a.text] = 1;
+      }
+    });
+
+    ages.forEach((a, i) => {
+      const stage = stageForAge(a);
       const titles = STORY_TITLES[stage] || STORY_TITLES.adult;
+      const season = seasonFor(cat, a);
+      let text = anchorAt[i];
+      if (!text) {
+        const e = pickStoryEvent(pool, used, a, rng, season);
+        text = e ? e.text : fallbackStoryText(stage, rng, used);
+      }
       steps.push({
-        kind: i === NEKOMATA_EVENTS.length - 1 ? 'evolve' : 'event',
-        age: e.age, ageLabel: ageLabel(e.age), stage: stage,
-        title: i === NEKOMATA_EVENTS.length - 1 ? '猫又になる' : titles[i % titles.length],
-        text: e.text,
-        evolve: i === NEKOMATA_EVENTS.length - 1 ? 'nekomata' : null
+        kind: 'event', age: a, ageLabel: ageLabelFine(a), stage, season,
+        title: titles[i % titles.length], text: text
       });
     });
+
     steps.push({
-      kind: 'death', age: cat.ageYears, ageLabel: ageLabel(cat.ageYears), stage: 'senior',
-      title: '最期', cause: 'nekomata',
+      kind: 'evolve', age: 100, ageLabel: '100歳', stage: 'senior', season: seasonFor(cat, 100),
+      title: '猫又になる', evolve: 'nekomata', text: NEKOMATA_EVENTS[8].text
+    });
+    steps.push({
+      kind: 'death', age: cat.ageYears, ageLabel: ageLabelFine(cat.ageYears), stage: 'senior',
+      season: seasonFor(cat, cat.ageYears), title: '最期', cause: 'nekomata',
       text: 'こたつで将棋を指したあと、ふっと姿を消した。百年の猫生だった。'
     });
 
@@ -1006,27 +1195,29 @@
     if (story[story.length - 1].kind === 'death') story.pop();
     const last = story[story.length - 1];
     const rng = statRng(cat, 0x2f1d + story.length * 17);
-    const n = added >= 2.4 ? 2 : 1;
-    const usedTexts = story.map(s => s.text);
+    /* 延びた年数ぶん、歩みも増やす（1年≒3歩） */
+    const n = Math.max(1, Math.min(14, Math.round(added * 3.2)));
+    const usedTexts = {};
+    story.forEach(s => { usedTexts[s.text] = 1; });
+    const pool = storyPool(cat);
     const extStart = story.length;
     for (let k = 1; k <= n; k++) {
       const a = last.age + (target - last.age) * (k / (n + 1));
       const stage = stageForAge(a);
       const titles = STORY_TITLES[stage] || STORY_TITLES.adult;
-      const pool = LATE_EVENTS[stage] || LATE_EVENTS.adult;
-      const fresh = pool.filter(t => usedTexts.indexOf(t) < 0);
-      const text = fresh.length ? fresh[Math.floor(rng() * fresh.length)] : pool[Math.floor(rng() * pool.length)];
-      usedTexts.push(text);
+      const season = seasonFor(cat, a);
+      const e = pickStoryEvent(pool, usedTexts, a, rng, season);
       story.push({
-        kind: 'event', age: Math.round(a * 100) / 100, ageLabel: ageLabel(a), stage,
-        title: titles[(k + story.length) % titles.length], text: text
+        kind: 'event', age: Math.round(a * 100) / 100, ageLabel: ageLabelFine(a), stage, season,
+        title: titles[(k + story.length) % titles.length],
+        text: e ? e.text : fallbackStoryText(stage, rng, usedTexts)
       });
     }
     const death = deathOf(cat, rng);
     cat.deathCause = death.cause;
     story.push({
-      kind: 'death', age: target, ageLabel: ageLabel(target), stage: stageForAge(target),
-      title: '最期', text: death.text, cause: death.cause
+      kind: 'death', age: target, ageLabel: ageLabelFine(target), stage: stageForAge(target),
+      season: seasonFor(cat, target), title: '最期', text: death.text, cause: death.cause
     });
     cat.caption = buildCaption(cat, rng);
     applyBaseStats(cat, { idx: extStart - 1, stats: story[extStart - 1].stats });
@@ -1163,17 +1354,48 @@
     return got;
   }
 
+  /* 追加イベント（季節・生活・野生・長寿）。js/events.js から供給される */
+  const EXTRA_EVENTS = (D.EVENTS && D.EVENTS.EVENTS) || [];
+  const VIGNETTES = (D.EVENTS && D.EVENTS.VIGNETTES) || [];
+  const WILD_VIGNETTES = (D.EVENTS && D.EVENTS.WILD_VIGNETTES) || [];
+
+  function eventFitsCat(e, cat) {
+    if (!e) return false;
+    if (e.kinds && e.kinds.indexOf(cat.klass) < 0) return false;
+    if (e.routes && e.routes.indexOf(cat.route) < 0) return false;
+    if (e.groups && (!cat.speciesGroup || e.groups.indexOf(cat.speciesGroup) < 0)) return false;
+    return true;
+  }
+
+  function seasonVignettes(cat) {
+    const src = cat.klass === 'wild' ? WILD_VIGNETTES : VIGNETTES;
+    const out = [];
+    src.forEach(v => {
+      const raw = typeof v === 'string' ? v : (v && v.text);
+      if (!raw) return;
+      const min = typeof v === 'object' && v.min != null ? v.min : 0.4;
+      const max = typeof v === 'object' && v.max != null ? v.max : 30;
+      const w = typeof v === 'object' && v.w ? v.w : 1;
+      SEASONS.forEach(s => {
+        out.push({ w: w, min: min, max: max, season: s, text: String(raw).replace(/\{season\}/g, SEASON_LABEL[s]) });
+      });
+    });
+    return out;
+  }
+
   function storyPool(cat) {
     const out = [];
     const seen = {};
     const add = (e) => {
-      if (!e || seen[e.text]) return;
+      if (!e || !e.text || seen[e.text]) return;
       seen[e.text] = 1;
-      out.push({ w: e.w || 1, min: e.min, max: e.max, text: e.text });
+      out.push({ w: e.w || 1, min: e.min == null ? 0 : e.min, max: e.max == null ? Infinity : e.max, season: e.season || null, text: e.text });
     };
     (cat.region && cat.region.events ? cat.region.events : []).forEach(t => add({ w: 1.3, min: 1.4, max: Infinity, text: t }));
     GENERIC_EVENTS(cat).forEach(add);
+    EXTRA_EVENTS.forEach(e => { if (eventFitsCat(e, cat)) add(e); });
     if (cat.klass === 'wild') WILD_EVENTS(cat).forEach(add);
+    seasonVignettes(cat).forEach(add);
     return out;
   }
 
@@ -1183,27 +1405,69 @@
     return 'home';
   }
 
-  function pickStoryEvent(pool, used, age, rng) {
-    const usedTexts = used.map(e => e.text);
-    let cands = pool.filter(e => usedTexts.indexOf(e.text) < 0 && age >= e.min && age <= e.max);
+  /* 使った文章は used[text] で覚え、同じ猫生で二度と同じ文を出さない */
+  function pickStoryEvent(pool, used, age, rng, season) {
+    const a = Number(age) || 0;
+    const mid = e => e.min + (Math.min(e.max, 30) - e.min) / 2;
+    const free = pool.filter(e => !used[e.text]);
+    if (!free.length) return null;
+    let cands = free.filter(e => a >= e.min && a <= e.max && (!e.season || e.season === season));
+    if (!cands.length) cands = free.filter(e => a >= e.min && a <= e.max && !e.season);
+    if (!cands.length) cands = free.filter(e => !e.season);
     if (!cands.length) {
-      const rest = pool.filter(e => usedTexts.indexOf(e.text) < 0);
-      if (!rest.length) return null;
-      const mid = e => e.min + (Math.min(e.max, 30) - e.min) / 2;
-      cands = rest.slice().sort((x, y) => Math.abs(mid(x) - age) - Math.abs(mid(y) - age)).slice(0, 4);
+      cands = free.slice().sort((x, y) => Math.abs(mid(x) - a) - Math.abs(mid(y) - a)).slice(0, 6);
     }
     const e = cands[pickIndex(cands.map(x => x.w || 1), rng)];
-    used.push(e);
+    used[e.text] = 1;
     return e;
   }
 
-  function fallbackStoryText(stage, rng) {
-    const pool = {
-      kitten: ['ころころ転がって、一日の半分を眠って過ごす。', '小さな体で、家中（あたり）のすみずみまで探検する。'],
-      adult: ['同じ場所で、同じ時間に、しっぽをのばして伸びをする。', '日だまりを見つけるのが、その日のいちばんの仕事。'],
-      senior: ['歩くのが少しゆっくりになった。それでも、行く場所は決まっている。', '長く寝て、起きて、また眠る。それでいい日だった。']
-    }[stage] || ['静かな一日が過ぎていく。'];
-    return pick(pool, rng);
+  const FALLBACK_TEXTS = {
+    kitten: [
+      'ころころ転がって、一日の半分を眠って過ごした。',
+      '小さな体で、家中（あたり）のすみずみまで探検した。',
+      '自分のしっぽを追いかけて、ぐるぐる回った。',
+      'はじめて見るものに、そっと前足で触れてみる。',
+      '眠くてたまらず、歩きながら目が閉じていく。',
+      '低い声で鳴いて、返事を待っていた。',
+      '爪を立てる加減がわからず、何度も転んだ。',
+      '小さな穴に頭を突っ込んで、抜けなくなった。',
+      '人の足音がすると、すぐに顔を上げる。',
+      'よく食べ、よく眠り、少しずつ大きくなった。'
+    ],
+    adult: [
+      '同じ場所で、同じ時間に、しっぽをのばして伸びをする。',
+      '日だまりを見つけるのが、その日のいちばんの仕事。',
+      '高いところに上って、しばらく街を見下ろしていた。',
+      '毛づくろいを念入りに済ませてから、眠りにつく。',
+      '誰かを待つでもなく、窓の外を眺めていた。',
+      'いつもの道を、いつもの順番で歩いて回る。',
+      '食べて、眠って、また食べる。それだけの一日。',
+      '静かな時間が、長く続いた。',
+      '小さな音にも、耳だけはしっかり反応する。',
+      '夜になると、ひとりでに目が覚めた。'
+    ],
+    senior: [
+      '歩くのが少しゆっくりになった。それでも、行く場所は決まっている。',
+      '長く寝て、起きて、また眠る。それでいい日だった。',
+      '日向の場所を、一日かけて少しずつ移動した。',
+      '若い猫を、遠くから静かに見ていた。',
+      '目を細めて、長いこと座っていた。',
+      '呼ばれても、しばらくしてから振り向く。',
+      '柔らかい場所を探して、何度も寝返りをうった。',
+      '夜中に目が覚めて、しばらく宙を見ていた。',
+      'ゆっくり食べて、ゆっくり眠った。',
+      '今日も無事に、一日が終わろうとしている。'
+    ]
+  };
+
+  function fallbackStoryText(stage, rng, used) {
+    const pool = FALLBACK_TEXTS[stage] || FALLBACK_TEXTS.adult;
+    const fresh = pool.filter(t => !used || !used[t]);
+    const list = fresh.length ? fresh : pool;
+    const text = list[Math.floor(rng() * list.length) % list.length];
+    if (used) used[text] = 1;
+    return text;
   }
 
   /* ---------- 「拾われる」＝家族に迎えられるイベント ---------- */
@@ -1251,11 +1515,11 @@
 
     const steps = [{
       kind: 'birth', age: 0, ageLabel: '生まれた日', stage: 'kitten', title: '誕生',
-      text: birthText(cat, rng)
+      season: seasonFor(cat, 0), text: birthText(cat, rng)
     }];
 
     const pool = storyPool(cat);
-    const used = [];
+    const used = {};
     const group = storyGroup(cat);
 
     const slots = [];
@@ -1263,7 +1527,7 @@
       const slot = age / (eventCount + 1);
       let a = slot * i + (rng() - 0.5) * slot * 0.4;
       a = clamp(a, Math.max(0.02, slot * (i - 1) + 0.01), Math.min(age * 0.96, slot * (i + 1) - 0.01));
-      slots.push(a);
+      slots.push(Math.round(a * 100) / 100);
     }
 
     /* 拾われるスロット（2択イベントと重ならないように先に決める） */
@@ -1288,6 +1552,8 @@
       const ch = choiceFor[i];
       const chOutdoorAfterAdoption = ch && adoptSlot && i > adoptSlot && ch.scene === 'out';
 
+      const season = seasonFor(cat, a);
+
       if (i === adoptSlot) {
         const text = pick(ADOPT_TEXTS[cat.route] || ADOPT_TEXTS.street, rng);
         const adoptTitle = cat.route === 'owned' ? '家族に迎えられる' : '拾われる';
@@ -1296,16 +1562,16 @@
         cat.adoptTitle = adoptTitle;
         cat.adoptText = text;
         steps.push({
-          kind: 'adopt', age: a, ageLabel: ageLabel(a), stage, title: adoptTitle,
-          adoptTitle: adoptTitle, text: text, adopted: true
+          kind: 'adopt', age: a, ageLabel: ageLabelFine(a), stage, title: adoptTitle,
+          adoptTitle: adoptTitle, text: text, adopted: true, season: season
         });
         continue;
       }
 
       if (ch && !chOutdoorAfterAdoption) {
         steps.push({
-          kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
-          text: ch.question,
+          kind: 'event', age: a, ageLabel: ageLabelFine(a), stage, title,
+          text: ch.question, season: season,
           choice: {
             id: ch.id, tier: ch.tier,
             question: ch.question,
@@ -1316,18 +1582,18 @@
         continue;
       }
       const useHome = adoptSlot && i > adoptSlot;
-      const e = pickStoryEvent(useHome ? homePool : pool, used, a, rng);
+      const e = pickStoryEvent(useHome ? homePool : pool, used, a, rng, season);
       steps.push({
-        kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
-        text: e ? e.text : fallbackStoryText(stage, rng)
+        kind: 'event', age: a, ageLabel: ageLabelFine(a), stage, title, season: season,
+        text: e ? e.text : fallbackStoryText(stage, rng, used)
       });
     }
 
     const death = deathOf(cat, rng);
     cat.deathCause = death.cause;
     steps.push({
-      kind: 'death', age: age, ageLabel: ageLabel(age), stage: stageForAge(age),
-      title: '最期', text: death.text, cause: death.cause
+      kind: 'death', age: age, ageLabel: ageLabelFine(age), stage: stageForAge(age),
+      title: '最期', text: death.text, cause: death.cause, season: seasonFor(cat, age)
     });
 
     cat.story = steps;
@@ -1583,9 +1849,11 @@
 
   return {
     mulberry32, newSeed, rollCat, sampleLifespan, buildTimeline, buildStory,
-    stageForAge, storyStepCount, STAGES, STAGE_LABEL,
+    stageForAge, storyStepCount, STAGES, STAGE_LABEL, STEP_TABLE,
+    ageLabelFine, SEASONS, SEASON_LABEL, seasonOfAge, seasonFor, seasonLabel, seasonEmoji,
     formatCount, formatProb, formatOneIn, ageText, ageLabel,
     rarityOf, dexCatalog, RARITY_ORDER, deathOf, buildCaption,
+    statusOf, rarityPoints, bossAt, STATUS_VIEW, IUCN_JP,
     /* 年をとる・分岐・やり込み */
     AGE_TICKS, NEKOMATA_TICKS, ageTicks, ageScalePercent, MILESTONES, milestoneAt, milestonesPassed,
     statsAt, peakStats, baseStats, statChips,

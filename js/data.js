@@ -9,6 +9,11 @@
   const breeds = root.CAT_BREEDS;
   const wild = root.CAT_WILD;
   const countries = root.CAT_COUNTRIES;
+  const events = root.CAT_EVENTS || {
+    EVENTS: [], VIGNETTES: [], WILD_VIGNETTES: [],
+    SEASON_LABEL: { spring: '春', summer: '夏', autumn: '秋', winter: '冬' },
+    SEASON_EMOJI: { spring: '🌸', summer: '🌻', autumn: '🍁', winter: '❄️' }
+  };
   if (!core || !breeds || !wild || !countries) throw new Error('data modules are missing');
 
   /* ---- 純血種のシェアを正規化 ---- */
@@ -77,6 +82,7 @@
     BREEDS: breeds,
     WILD: wild,
     COUNTRIES: countries,
+    EVENTS: events,
     WILD_SUM: wildSum,
     OWNED_SUM: ownedSum,
     STRAY_SUM: straySum,

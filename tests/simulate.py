@@ -1,8 +1,11 @@
 """世界猫生ガチャ — 検証スクリプト
 1) 10,000回の抽選シミュレーション（例外・分布・寿命・整合性）
-2) 猫生ストーリー（3〜7歩・子猫→成猫→シニアの成長・2択・拾われる）の検査
+2) 猫生ストーリー（寿命に応じた歩数・季節・2択・拾われる）の検査
 3) 全アセット（13タイプ×子猫/成猫のPNG）とマッピング網羅性のチェック
 4) データ網羅性のチェック（純血種・野生ネコ科・国）
+5) 誕生画面の珍しさ表示・常時名札（境遇更新）の検査
+
+ボリューム目標：1x=3.8秒/歩で、15歳の猫生（約52歩）が約3分20秒＋2択の時間。
 
 Node.js が無い環境のため quickjs（Python埋め込みJSエンジン）で
 実ファイル js/*.js をそのまま読み込んで実行する。
@@ -17,7 +20,7 @@ import quickjs
 
 ROOT = Path(__file__).resolve().parent.parent
 JS_FILES = [
-    "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js",
+    "js/data-core.js", "js/breeds.js", "js/wild.js", "js/data-countries.js", "js/events.js",
     "js/data.js", "js/engine.js", "js/catart.js", "js/app.js",
 ]
 N = 10000
@@ -71,6 +74,12 @@ def run(ctx):
       var fin = CATAPP.buildFinaleHTML(c);
       var s0 = CATART.statsFor(c, 0);
       var sLast = CATART.statsFor(c, story.length - 1);
+      var pts = CATGACHA.rarityPoints(c);
+      var np0 = CATAPP.nameplateHTML(c, 0);
+      var npLast = CATAPP.nameplateHTML(c, story.length - 1);
+      var st0 = CATGACHA.statusOf(c, 0);
+      var stA = c.adoptIndex == null ? null : CATGACHA.statusOf(c, c.adoptIndex);
+      var stB = c.adoptIndex == null ? null : CATGACHA.statusOf(c, c.adoptIndex - 1);
       out.cats.push({
         klass: c.klass, route: c.route, country: c.region.bucket, regionName: c.region.name,
         speciesKey: c.speciesKey, speciesName: c.speciesName, speciesGroup: c.speciesGroup || null,
@@ -138,7 +147,28 @@ def run(ctx):
         statsHTML: CATART.statsHTML(c, Math.min(2, story.length - 1)),
         particleCount: (CATART.particlesHTML(c, 0, false).match(/<span/g) || []).length,
         bubbleText: CATART.bubbleFor(c.seed, 1).text,
-        hasAdoptCollar: actor.indexOf('collar is-on') >= 0
+        hasAdoptCollar: actor.indexOf('collar is-on') >= 0,
+        /* 誕生画面の「珍しさアピール」と常時名札 */
+        rarePoints: pts,
+        rareOk: pts.length >= 2 && pts.every(function(t){
+          return typeof t === 'string' && t.length > 3 && t.indexOf('undefined') < 0 && t.indexOf('NaN') < 0;
+        }),
+        np0: np0, npLast: npLast,
+        npOk: np0.length > 60 && np0.indexOf('undefined') < 0 && np0.indexOf('NaN') < 0
+          && np0.indexOf(CATGACHA.formatOneIn(c.probability)) >= 0
+          && np0.indexOf(c.speciesName) >= 0
+          && (c.klass === 'wild' || np0.indexOf(c.region.name) >= 0),
+        npLastOk: npLast.length > 60 && npLast.indexOf('undefined') < 0 && npLast.indexOf('NaN') < 0
+          && npLast.indexOf(CATGACHA.statusOf(c, story.length - 1).text) >= 0,
+        status0: st0.text, statusTone: st0.tone,
+        statusBeforeAdopt: stB ? stB.text : null,
+        statusAdopt: stA ? stA.text : null,
+        birthCardOk: html.indexOf('珍しいポイント') >= 0 && html.indexOf('地球約10億匹中') >= 0
+          && html.indexOf('分の1') >= 0 && html.indexOf('仲間は') >= 0
+          && html.indexOf('国・地域') >= 0 && html.indexOf('目の色') >= 0 && html.indexOf('境遇') >= 0,
+        seasonOk: story.every(function(s){ return ['spring','summer','autumn','winter'].indexOf(s.season) >= 0; }),
+        seasonSet: (function(){ var o = {}; story.forEach(function(s){ o[s.season] = 1; }); return Object.keys(o); })(),
+        stepTexts: story.map(function(s){ return s.text; })
       });
     } catch (e) {
       out.errors++;
@@ -292,7 +322,10 @@ def main():
             print(f"  {route:10s} n={len(xs):5d} 平均 {sum(xs)/len(xs):5.2f}歳  "
                   f"1歳未満 {sum(1 for a in xs if a<1)/len(xs)*100:4.1f}%  "
                   f"15歳以上 {sum(1 for a in xs if a>=15)/len(xs)*100:4.1f}%")
-    jp_owned = [c["age"] for c in cats if c["route"] == "owned" and c["country"] == "jp"]
+    # 猫又（100年）は伝説の例外なので、実統計との比較からは除く
+    jp_owned = [c["age"] for c in cats
+                if c["route"] == "owned" and c["country"] == "jp"
+                and not c["nekomata"] and not c["maneki"]]
     if jp_owned:
         print(f"  日本飼い猫 平均 {sum(jp_owned)/len(jp_owned):.2f}歳（実統計 約16歳）")
         check(13.0 <= sum(jp_owned) / len(jp_owned) <= 18.0, "日本飼い猫の平均寿命が実統計から外れすぎ")
@@ -314,9 +347,61 @@ def main():
     choice_total = sum(len(c["choices"]) for c in cats)
     choice_cats = sum(1 for c in cats if c["choices"])
     print(f"  2択イベント: {choice_total}件 / {choice_cats}頭 ({pct(choice_cats, n)} の猫生に入る)")
-    check(all(3 <= c["storyLen"] <= (12 if c["nekomata"] else (9 if c["maneki"] else 7)) for c in cats),
-          "歩数が範囲外（通常3〜7 / 招き猫〜9 / 猫又11）")
-    check(all(lens[k] > 0 for k in (3, 4, 5, 6, 7)), "歩数のバリエーション不足(3〜7が揃っていない)")
+    check(all(4 <= c["storyLen"] <= 82 for c in cats), "歩数が範囲外（4〜82）")
+    check(all(lens[k] > 0 for k in (4, 5, 6, 7, 8)), "歩数のバリエーション不足(4〜8が揃っていない)")
+
+    # ---- 寿命と歩数のスケール（15歳で45〜60歩） ----
+    print("\n--- 寿命と歩数（ボリューム） ---")
+    def avg_step(xs):
+        return sum(c["storyLen"] for c in xs) / len(xs) if xs else 0
+    bands = [
+        ("0〜1歳", 0.0, 1.0, 4, 8),
+        ("1歳", 0.95, 1.05, 7, 10),
+        ("5歳", 4.9, 5.1, 17, 25),
+        ("10歳", 9.9, 10.1, 29, 41),
+        ("15歳", 14.9, 15.1, 45, 60),
+        ("20歳", 19.9, 20.1, 50, 70),
+    ]
+    for label, lo, hi, slo, shi in bands:
+        xs = [c for c in cats if lo <= c["age"] < hi and not c["nekomata"] and not c["maneki"]]
+        if not xs:
+            print(f"  {label}: 該当なし")
+            continue
+        a = avg_step(xs)
+        print(f"  {label}: {len(xs):4d}頭 / 平均 {a:5.1f}歩（目標 {slo}〜{shi}） / 1x換算 {a * 3.8 / 60:.1f}分")
+        check(slo <= a <= shi, f"{label}の平均歩数が範囲外: {a:.1f}")
+        check(all(slo <= c["storyLen"] <= shi for c in xs), f"{label}に歩数が範囲外の猫がいる")
+
+    # ---- 1猫生内の文章重複・欠損 ----
+    empty_text = [c for c in cats if any((not isinstance(t, str)) or not t or "undefined" in t for t in c["stepTexts"])]
+    check(not empty_text, f"文章が空/undefined のステップがある: {len(empty_text)}頭")
+    season_var = sum(1 for c in cats if len(c["seasonSet"]) >= 3)
+    print(f"  季節が3つ以上めぐる猫生: {season_var} ({pct(season_var, n)})")
+    check(season_var > n * 0.2, "季節がめぐる猫生が少なすぎる")
+
+    # ---- 誕生画面の珍しさ・常時の名札 ----
+    print("\n--- 誕生画面・名札 ---")
+    check(all(c["rareOk"] for c in cats), "珍しいポイントが空/不正な猫がいる")
+    check(all(c["birthCardOk"] for c in cats), "誕生カードに珍しさ表示・プロフィールがない")
+    check(all(c["npOk"] for c in cats), "名札（誕生時）が不正")
+    check(all(c["npLastOk"] for c in cats), "名札（最期）が不正")
+    check(all(c["seasonOk"] for c in cats), "季節が未設定のステップがある")
+    wilds = [c for c in cats if c["klass"] == "wild"]
+    check(all(("野生のネコ科" in c["status0"]) or ("動物園" in c["status0"]) for c in wilds),
+          "野生種の境遇表示が不正")
+    check(all("飼い猫" in c["status0"] or "地域猫" in c["status0"] or "野良猫" in c["status0"]
+              or "野生化" in c["status0"] or "野生のネコ科" in c["status0"] or "動物園" in c["status0"]
+              or "特別枠" in c["status0"] or "猫" in c["status0"] for c in cats),
+          "境遇表示が空の猫がいる")
+    adopted_np = [c for c in cats if c["adopted"]]
+    changed = [c for c in adopted_np if c["statusBeforeAdopt"] != c["statusAdopt"]]
+    print(f"  拾われて境遇表示が変わった猫: {len(changed)}/{len(adopted_np)}")
+    check(len(changed) == len(adopted_np), "拾われても名札の境遇が変わらない猫がいる")
+    check(all(("拾われて" in c["statusAdopt"]) or ("迎えられた" in c["statusAdopt"]) or ("招き猫" in c["statusAdopt"])
+              for c in adopted_np), "拾われた後の境遇表示が不正")
+    print("  珍しいポイント数: 平均 {:.1f} 件 / 例: {}".format(
+        sum(len(c["rarePoints"]) for c in cats) / n,
+        cats[0]["rarePoints"][0][:46]))
     check(all(c["storyKinds"][0] == "birth" for c in cats), "最初が誕生ステップでない")
     check(all(c["storyKinds"][-1] == "death" for c in cats), "最後が最期ステップでない")
     check(all(c["birthAge"] == 0 for c in cats), "誕生ステップの年齢が0でない")
@@ -432,7 +517,7 @@ def main():
     print(f"  招き猫（お店）: {len(maneki)} ({pct(len(maneki), n)})")
     check(len(neko) > 0, "猫又ルートに1頭も到達しない")
     check(all(c["age"] >= 100 for c in neko), "猫又の享年が100歳未満")
-    check(all(c["storyLen"] >= 9 for c in neko), "猫又の猫生が短すぎる")
+    check(all(60 <= c["storyLen"] <= 80 for c in neko), "猫又の歩数が範囲外（66〜72歩）")
     check(all(c["klass"] == "domestic" for c in neko), "野生種が猫又になっている")
     check(all("senior" in c["storyStages"] for c in neko), "猫又にシニアステージがない")
     check(len(maneki) > 0, "招き猫ルートに1頭も到達しない")

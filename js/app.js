@@ -131,26 +131,88 @@
     return `${cat.bornPlace || placeText(cat)}で、${what}として生まれた！`;
   }
 
-  function traitsHTML(cat) {
-    const out = [];
-    out.push(`<span class="chip chip--pink">${cat.rarity}・${RARITY_JP[cat.rarity]}</span>`);
-    out.push(`<span class="chip">${cat.statusLabel}</span>`);
-    out.push(`<span class="chip">${cat.speciesName}</span>`);
-    out.push(`<span class="chip">${D.SEX_LABEL[cat.sex]}</span>`);
-    const eye = cat.eyeColor2 !== cat.eyeColor ? 'オッドアイ' : eyeName(cat.eyeColor) + 'の目';
-    out.push(`<span class="chip">${eye}</span>`);
-    if (cat.longhair) out.push('<span class="chip">長毛</span>');
-    if (cat.speciesGroup === 'big') out.push('<span class="chip">大型ネコ科</span>');
-    if (cat.klass === 'wild' && cat.species && cat.species.iucn) out.push(`<span class="chip">IUCN ${cat.species.iucn}</span>`);
-    cat.mutations.forEach(m => out.push(`<span class="chip chip--mint">${m.name}</span>`));
-    return `<div class="chips">${out.join('')}</div>`;
+  function eyeText(cat) {
+    const odd = (cat.mutations || []).some(m => m.key === 'odd_eye');
+    if (odd) return 'オッドアイ（' + eyeName(cat.eyeColor) + 'と' + eyeName(cat.eyeColor2) + '）';
+    return eyeName(cat.eyeColor) + 'の目';
+  }
+
+  function speciesKind(cat) {
+    if (cat.klass === 'wild') return '野生のネコ科';
+    return cat.route === 'purebred' ? 'イエネコ（純血種）' : 'イエネコ（雑種）';
+  }
+
+  /* 誕生画面：この子はだれか（国・種別・境遇・性別・目） */
+  function profileHTML(cat) {
+    const st = E.statusOf(cat, 0);
+    const coatKey = cat.klass === 'wild' ? '種' : cat.route === 'purebred' ? '品種' : '毛柄';
+    const coatVal = cat.klass === 'wild'
+      ? `${cat.speciesName}${cat.sciName ? '（' + cat.sciName + '）' : ''}`
+      : cat.speciesName;
+    const rows = [
+      ['国・地域', `${cat.region.flag} ${placeText(cat)}`],
+      ['種別', speciesKind(cat)],
+      [coatKey, coatVal],
+      ['境遇', st.text],
+      ['性別', D.SEX_LABEL[cat.sex]],
+      ['目の色', eyeText(cat)]
+    ];
+    return `<div class="who-card">
+      <p class="who-title">🐾 この子はこんな猫</p>
+      <dl class="who-grid">${rows.map(r => `<div class="who-row"><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('')}</dl>
+    </div>`;
+  }
+
+  /* 誕生画面：どれだけ珍しいか */
+  function rareCardHTML(cat) {
+    const points = E.rarityPoints(cat);
+    return `<div class="rare-card">
+      <div class="rare-head">
+        <span class="rarity rarity--big r-${cat.rarity}">${cat.rarity}</span>
+        <span class="rare-jp">${RARITY_JP[cat.rarity]}</span>
+        <span class="rare-tag">✨ 珍しさ</span>
+      </div>
+      <p class="rare-odds">地球約10億匹中の <b>${E.formatOneIn(cat.probability)}</b><span class="rare-pct">（${E.formatProb(cat.probability)}）</span><span class="rare-sep">｜</span>仲間は <b>${E.formatCount(cat.population)}</b></p>
+      <p class="rare-points-title">✨ 珍しいポイント・豆知識</p>
+      <ul class="rare-points">${points.map(t => `<li>${t}</li>`).join('')}</ul>
+    </div>`;
+  }
+
+  /* 常時プロフィールバー（名札） */
+  function nameplateHTML(cat, idx) {
+    if (!cat || !cat.story || !cat.story.length) return '';
+    const i = Math.max(0, Math.min(idx == null ? 0 : idx, cat.story.length - 1));
+    const step = cat.story[i];
+    const st = E.statusOf(cat, i);
+    const extras = (st.extra || []).map(x => `<i>｜</i><span class="np-extra">${x.icon} ${x.label}</span>`).join('');
+    const season = step.season ? '・' + E.seasonEmoji(step.season) + E.seasonLabel(step.season) : '';
+    return `<div class="np-top">
+      <span class="np-name">🐈 ${cat.name}</span>
+      <span class="np-age">${step.ageLabel}${season}</span>
+    </div>
+    <div class="np-facts">
+      <span class="np-where">${cat.region.flag} ${placeText(cat)}</span>
+      <i>｜</i>
+      <span class="np-species">${cat.speciesName}・${D.SEX_LABEL[cat.sex]}</span>
+      <i>｜</i>
+      <span class="np-status${st.tone ? ' tone-' + st.tone : ''}">${st.text}</span>
+      ${extras}
+      <i>｜</i>
+      <span class="np-one">${E.formatOneIn(cat.probability)}</span>
+    </div>`;
   }
 
   function progressHTML(cat, idx) {
-    return cat.story.map((s, i) => {
-      const cls = i < idx ? ' is-done' : i === idx ? ' is-now' : '';
-      return `<span class="paw${cls}">🐾</span>`;
-    }).join('');
+    const n = cat.story.length;
+    if (n <= 10) {
+      return cat.story.map((s, i) => {
+        const cls = i < idx ? ' is-done' : i === idx ? ' is-now' : '';
+        return `<span class="paw${cls}">🐾</span>`;
+      }).join('');
+    }
+    const pct = n > 1 ? Math.round((idx / (n - 1)) * 100) : 0;
+    return `<span class="paw-count">🐾 ${idx + 1}<em>/${n}</em></span>`
+      + `<span class="paw-bar"><i style="width:${pct}%"></i></span>`;
   }
 
   function choiceHTML(step, pick) {
@@ -172,12 +234,6 @@
     </div>`;
   }
 
-  function stageLabel(cat, stage, age) {
-    if (cat.klass === 'wild') return stage === 'kitten' ? 'こども' : stage === 'senior' ? 'シニア' : 'おとな';
-    if (stage === 'senior') return (Number(age) || 0) >= 15 ? 'ご長寿猫' : 'シニア猫';
-    return STAGE_JP[stage] || '';
-  }
-
   /* その時点の姿（猫又・招き猫） */
   function formAt(cat, idx) {
     if (!cat || !cat.story || !cat.story[idx]) return null;
@@ -188,46 +244,67 @@
 
   function badgeHTML(cat, idx) {
     const out = [];
-    const ms = cat.story[idx] && cat.story[idx].kind === 'death' ? null : E.milestoneAt(cat.story, idx);
+    const step = cat.story[idx];
+    const ms = step && step.kind === 'death' ? null : E.milestoneAt(cat.story, idx);
     if (ms) out.push(`<span class="milestone-badge tone-${ms.tone}">${ms.icon} ${ms.label}</span>`);
     const f = formAt(cat, idx);
-    if (f === 'nekomata') out.push('<span class="form-badge is-nekomata">🔮 猫又</span>');
-    if (f === 'maneki') out.push('<span class="form-badge is-maneki">🏮 招き猫</span>');
-    if (cat.bossCat && idx > 0) out.push('<span class="form-badge is-boss">👑 ボス猫</span>');
+    if (f === 'nekomata' && step && step.evolve === 'nekomata') out.push('<span class="form-badge is-nekomata">🔮 猫又</span>');
+    if (f === 'maneki' && step && step.kind === 'adopt') out.push('<span class="form-badge is-maneki">🏮 招き猫</span>');
+    if (step && step.choice && step.chosen != null) {
+      const o = step.choice.options[step.chosen];
+      if (o && o.effect && o.effect.boss) out.push('<span class="form-badge is-boss">👑 ボス猫</span>');
+    }
     return out.join('');
   }
 
   /* ページカード（イラストはステージ側に出るので、ここは物語だけ） */
   function stepCardHTML(cat, idx, picked) {
     const step = cat.story[idx];
-    const isBirth = step.kind === 'birth';
     const isDeath = step.kind === 'death';
     const isAdopt = step.kind === 'adopt';
     const isEvolve = step.kind === 'evolve' || step.evolve === 'nekomata';
     const pick = step.chosen != null ? step.chosen : (picked ? picked[idx] : undefined);
+
+    /* 誕生のページは「この子はだれか」と「どれだけ珍しいか」を主役にする */
+    if (step.kind === 'birth') {
+      return `
+      <article class="page page--birth">
+        <span class="page-tape" aria-hidden="true"></span>
+        <div class="page-head">
+          <span class="age-badge">生まれた日</span>
+          <span class="page-no">${idx + 1}/${cat.story.length}</span>
+        </div>
+        <div class="birth-hero">
+          <p class="birth-name"><span class="birth-emoji" aria-hidden="true">🐈</span>${cat.name}</p>
+          <p class="birth-sub">🌏 ${bornLine(cat)}</p>
+        </div>
+        <p class="page-text">${step.text}</p>
+        ${profileHTML(cat)}
+        ${rareCardHTML(cat)}
+      </article>`;
+    }
+
     return `
-    <article class="page${isBirth ? ' page--birth' : ''}${isDeath ? ' page--death' : ''}${isAdopt ? ' page--adopt' : ''}${isEvolve ? ' page--evolve' : ''}">
+    <article class="page${isDeath ? ' page--death' : ''}${isAdopt ? ' page--adopt' : ''}${isEvolve ? ' page--evolve' : ''}">
       <span class="page-tape" aria-hidden="true"></span>
       <div class="page-head">
         <span class="age-badge">${step.ageLabel}</span>
-        <span class="stage-chip">${stageLabel(cat, step.stage, step.age)}</span>
-        ${isBirth ? `<span class="rarity r-${cat.rarity}">${cat.rarity}</span>` : ''}
         ${isAdopt ? `<span class="adopt-tag">${step.maneki || cat.maneki ? '🏮 お店に迎えられた' : '🏡 家族に迎えられた'}</span>` : ''}
         <span class="page-no">${idx + 1}/${cat.story.length}</span>
       </div>
       <div class="page-badges">${badgeHTML(cat, idx)}</div>
-      ${isBirth ? `<p class="born-line">🌏 ${bornLine(cat)}</p>` : ''}
       <h2 class="page-title">${isDeath ? '🌈 最期' : isAdopt ? '🏡 ' + (step.adoptTitle || '拾われる') : isEvolve ? '🔮 ' + (step.title || '猫又になる') : '【' + step.title + '】'}</h2>
       <p class="page-text">${step.text}</p>
-      ${isBirth ? traitsHTML(cat) : ''}
       ${step.choice ? choiceHTML(step, pick) : ''}
     </article>`;
   }
 
   function memoryHTML(cat, idx, picked) {
     if (!idx) return '';
-    let out = '';
-    for (let i = 0; i < idx; i++) {
+    /* 歩数が多い猫生では、直近の8歩だけを振り返る */
+    const from = Math.max(0, idx - 8);
+    let out = from > 0 ? `<p class="note-more">…これより前の${from}歩は、心のなかに。</p>` : '';
+    for (let i = from; i < idx; i++) {
       const s = cat.story[i];
       const pick = picked ? picked[i] : undefined;
       const chosen = s.choice && pick != null ? s.choice.options[pick] : null;
@@ -400,7 +477,8 @@
     const state = {
       dex: loadDex(), current: null, rolling: false, tab: 'species', step: 0,
       picked: {}, recorded: false, shownStage: null, shownScene: null, taps: 0, adopted: false,
-      auto: true, speed: 1, autoTimer: null, newAch: [], shownForm: null, rulerKey: null, msShown: {}
+      auto: true, speed: 1, autoTimer: null, newAch: [], shownForm: null, rulerKey: null, msShown: {},
+      started: false
     };
 
     const el = {
@@ -411,13 +489,13 @@
       dexSummary: $('dexSummary'), dexBadge: $('dexBadge'),
       statTotal: $('statTotal'), statBest: $('statBest'), statRate: $('statRate'),
       storyProgress: $('storyProgress'), pageWrap: $('pageWrap'), walkBtn: $('walkBtn'),
-      walkSub: $('walkSub'), skipBtn: $('skipBtn'), finale: $('finale'), finaleBody: $('finaleBody'),
+      walkText: $('walkText'), walkSub: $('walkSub'), skipBtn: $('skipBtn'),
+      finale: $('finale'), finaleBody: $('finaleBody'), nameplate: $('nameplate'),
       memories: $('memories'), memoryList: $('memoryList'),
       catStage: $('catStage'), stageScene: $('stageScene'), stageParticles: $('stageParticles'),
       catActor: $('catActor'), stageToast: $('stageToast'), stats: $('stats'),
-      stageAge: $('stageAge'), stageStage: $('stageStage'), stagePlace: $('stagePlace'),
-      tapHint: $('tapHint'),
-      stageMood: $('stageMood'), stageForm: $('stageForm'),
+      tapHint: $('tapHint'), stageMood: $('stageMood'),
+      autoBar: $('autoBar'),
       autoBtn: $('autoBtn'), autoBtnIcon: $('autoBtnIcon'), autoBtnText: $('autoBtnText'),
       autoNote: $('autoNote'), speed1: $('speed1'), speed2: $('speed2'),
       ageRuler: $('ageRuler'), ageTicks: $('ageTicks'), ageMarker: $('ageMarker'), ageFill: $('ageFill')
@@ -525,16 +603,8 @@
           + (form === 'nekomata' ? ' is-nekomata' : '')
           + (form === 'maneki' ? ' is-maneki' : '');
       }
-      if (el.stageForm) {
-        el.stageForm.hidden = !form;
-        el.stageForm.textContent = form === 'nekomata' ? '🔮 猫又' : form === 'maneki' ? '🏮 招き猫' : '';
-      }
-
       paintScene(cat, idx, dead);
       el.stats.innerHTML = A.statsHTML(cat, idx);
-      el.stageAge.textContent = step.ageLabel;
-      el.stageStage.textContent = stageLabel(cat, stage, step.age);
-      el.stagePlace.textContent = A.sceneLabel(A.sceneKeyFor(cat, idx));
       el.catStage.classList.toggle('is-finale', dead);
       if (dead) el.tapHint.hidden = true;
     }
@@ -561,11 +631,13 @@
     el.catActor.addEventListener('click', tapCat);
 
     /* --- オート進行（2択が来たら自動でひと休み） --- */
-    function autoInterval() { return state.speed === 2 ? 1200 : 2500; }
+    /* 1x=3.8秒 / 2x=1.9秒。15歳の猫生（約52歩）が1xで約3分20秒＋2択の時間 */
+    function autoInterval() { return state.speed === 2 ? 1900 : 3800; }
 
     function autoBlocked() {
       const cat = state.current;
       if (!cat) return 'idle';
+      if (!state.started) return 'birth';
       const step = cat.story[state.step];
       if (!step) return 'idle';
       if (step.kind === 'death') return 'death';
@@ -592,10 +664,11 @@
       const block = autoBlocked();
       let note;
       if (!state.current) note = '猫生が始まると自動で進むよ';
+      else if (block === 'birth') note = '🐾 「この子の猫生を歩む」でスタート';
       else if (!on) note = '🐾 手動で「猫生を歩む」';
       else if (block === 'death') note = '🌈 猫生が終わったよ';
       else if (block === 'choice') note = '✋ 選択肢でひと休み（えらぶと再開）';
-      else note = '⏱ ' + (state.speed === 2 ? '1.2' : '2.5') + '秒ごとに自動で進む';
+      else note = '⏱ ' + (state.speed === 2 ? '1.9' : '3.8') + '秒ごとに自動で進む';
       el.autoNote.textContent = note;
     }
 
@@ -654,7 +727,9 @@
       el.pageWrap.classList.remove('turn');
       void el.pageWrap.offsetWidth;
       el.pageWrap.classList.add('turn');
+      el.storyProgress.className = 'paw-track' + (cat.story.length > 10 ? ' has-bar' : '');
       el.storyProgress.innerHTML = progressHTML(cat, idx);
+      if (el.nameplate) el.nameplate.innerHTML = nameplateHTML(cat, idx);
       updateStage(cat, idx);
       renderAgeRuler(cat, idx);
 
@@ -668,8 +743,13 @@
       const isDeath = step.kind === 'death';
       const needChoice = !!step.choice && step.chosen == null;
       el.walkBtn.hidden = isDeath || needChoice;
-      el.walkSub.textContent = needChoice ? 'えらんでね' : (idx === 0 ? 'まずは一歩' : 'あと' + (cat.story.length - idx - 1) + '歩');
+      el.walkBtn.classList.toggle('is-start', !state.started);
+      if (el.walkText) el.walkText.textContent = !state.started ? 'この子の猫生を歩む' : '猫生を歩む';
+      el.walkSub.textContent = !state.started
+        ? 'タップで猫生がはじまる'
+        : needChoice ? 'えらんでね' : 'あと' + (cat.story.length - idx - 1) + '歩';
       el.skipBtn.hidden = isDeath;
+      if (el.autoBar) el.autoBar.hidden = !state.started;
 
       el.finale.hidden = !isDeath;
       if (isDeath) {
@@ -694,6 +774,7 @@
       clearAuto();
       state.current = cat;
       state.step = 0;
+      state.started = false;
       state.picked = {};
       state.recorded = false;
       state.newAch = [];
@@ -715,6 +796,8 @@
       const step = cat.story[state.step];
       if (step.choice && step.chosen == null) return;
       if (state.step >= cat.story.length - 1) return;
+      /* 誕生画面の「この子の猫生を歩む」で、オート進行がスタートする */
+      if (!state.started) state.started = true;
       state.step += 1;
       renderStory();
     }
@@ -722,6 +805,7 @@
     function skipAll() {
       const cat = state.current;
       if (!cat) return;
+      state.started = true;
       cat.story.forEach((s, i) => {
         if (s.choice && s.chosen == null) { s.chosen = 0; state.picked[i] = 0; }
       });
@@ -878,6 +962,7 @@
   root.CATAPP = Object.assign(root.CATAPP || {}, {
     buildStepHTML: stepCardHTML, buildFinaleHTML, buildDexHTML, shareText, shareURL,
     achievement, record, unlockAchievements, loadDex, emptyDex, eyeName, bornLine,
+    nameplateHTML, profileHTML, rareCardHTML, eyeText, progressHTML,
     TOTAL_TARGETS, CATALOG, formAt, achBurstHTML,
     buildResultHTML: function (cat) { return stepCardHTML(cat, 0, {}); }
   });

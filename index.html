@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>世界猫生ガチャ｜子猫で生まれて、猫生を歩む</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='52'%3E%F0%9F%90%88%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=20261123f">
+<link rel="stylesheet" href="css/style.css?v=20261123g">
 </head>
 <body>
 <div class="floaties" aria-hidden="true"><span>🐾</span><span>🐾</span><span>🐾</span><span>🐾</span><span>🐾</span></div>
@@ -77,7 +77,9 @@
         <button class="skip-btn" id="skipBtn">⏩ 一気に最期まで見る</button>
       </div>
 
-      <div class="auto-bar" id="autoBar">
+      <div class="nameplate" id="nameplate" aria-live="polite"></div>
+
+      <div class="auto-bar" id="autoBar" hidden>
         <button class="auto-btn is-on" id="autoBtn" aria-pressed="true">
           <span class="auto-icon" id="autoBtnIcon">⏸</span><span id="autoBtnText">一時停止</span>
         </button>
@@ -85,7 +87,7 @@
           <button class="speed-btn is-active" id="speed1" data-speed="1">1x</button>
           <button class="speed-btn" id="speed2" data-speed="2">2x</button>
         </div>
-        <span class="auto-note" id="autoNote">2.5秒ごとに自動で進む</span>
+        <span class="auto-note" id="autoNote">3.8秒ごとに自動で進む</span>
       </div>
 
       <div class="stage" id="catStage">
@@ -93,12 +95,6 @@
         <div class="stage-glow" aria-hidden="true"></div>
         <div class="stage-mood" id="stageMood" aria-hidden="true"></div>
         <div class="particles" id="stageParticles" aria-hidden="true"></div>
-        <div class="stage-top">
-          <span class="stage-age" id="stageAge">生まれた日</span>
-          <span class="stage-stage" id="stageStage">子猫</span>
-          <span class="stage-form" id="stageForm" hidden></span>
-          <span class="stage-place" id="stagePlace">あたたかいおうち</span>
-        </div>
         <div class="cat-actor" id="catActor" role="button" tabindex="0" aria-label="猫をタップして反応を見る"></div>
         <div class="stage-toast" id="stageToast" aria-live="polite"></div>
         <div class="stats" id="stats"></div>
@@ -116,7 +112,7 @@
       <button class="walk-btn" id="walkBtn">
         <span class="walk-paw" aria-hidden="true">🐾</span>
         <span class="walk-lines">
-          <span class="walk-text">猫生を歩む</span>
+          <span class="walk-text" id="walkText">猫生を歩む</span>
           <span class="walk-sub" id="walkSub">1歩すすむ</span>
         </span>
         <span class="walk-shine" aria-hidden="true"></span>
@@ -163,13 +159,14 @@
 
 </div>
 
-<script src="js/data-core.js?v=20261123f"></script>
-<script src="js/breeds.js?v=20261123f"></script>
-<script src="js/wild.js?v=20261123f"></script>
-<script src="js/data-countries.js?v=20261123f"></script>
-<script src="js/data.js?v=20261123f"></script>
-<script src="js/engine.js?v=20261123f"></script>
-<script src="js/catart.js?v=20261123f"></script>
-<script src="js/app.js?v=20261123f"></script>
+<script src="js/data-core.js?v=20261123g"></script>
+<script src="js/breeds.js?v=20261123g"></script>
+<script src="js/wild.js?v=20261123g"></script>
+<script src="js/data-countries.js?v=20261123g"></script>
+<script src="js/events.js?v=20261123g"></script>
+<script src="js/data.js?v=20261123g"></script>
+<script src="js/engine.js?v=20261123g"></script>
+<script src="js/catart.js?v=20261123g"></script>
+<script src="js/app.js?v=20261123g"></script>
 </body>
 </html>
