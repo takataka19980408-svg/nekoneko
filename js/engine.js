@@ -640,6 +640,7 @@
       const titles = STORY_TITLES[stage] || STORY_TITLES.adult;
       const title = titles[(i - 1) % titles.length];
       const ch = choiceFor[i];
+      const chOutdoorAfterAdoption = ch && adoptSlot && i > adoptSlot && ch.scene === 'out';
 
       if (i === adoptSlot) {
         const text = pick(ADOPT_TEXTS[cat.route] || ADOPT_TEXTS.street, rng);
@@ -654,7 +655,7 @@
         continue;
       }
 
-      if (ch) {
+      if (ch && !chOutdoorAfterAdoption) {
         steps.push({
           kind: 'event', age: a, ageLabel: ageLabel(a), stage, title,
           text: ch.question,

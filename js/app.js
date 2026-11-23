@@ -414,7 +414,7 @@
       if (layer) {
         layer.innerHTML = `<span class="bubble" style="left:${30 + Math.round((state.taps * 37) % 40)}%"><b>${b.emoji}</b>${b.text}</span>`;
         const t = root.setTimeout || setTimeout;
-        t(function () { if (layer) layer.innerHTML = ''; }, 1700);
+        t(function () { if (layer) layer.innerHTML = ''; }, 2100);
       }
     }
     el.catActor.addEventListener('click', tapCat);

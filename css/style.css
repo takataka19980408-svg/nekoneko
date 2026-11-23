@@ -1256,19 +1256,19 @@ body::before {
   left: 0;
   right: 0;
   top: 0;
-  height: 62%;
+  height: 64%;
   background:
-    linear-gradient(90deg, #2b3549 0 30%, transparent 30% 70%, #2b3549 70% 100%),
-    repeating-linear-gradient(180deg, transparent 0 22px, rgba(255, 255, 255, .04) 22px 24px);
+    linear-gradient(90deg, rgba(22, 28, 42, .92) 0 22%, rgba(22, 28, 42, 0) 40% 60%, rgba(22, 28, 42, .92) 78% 100%),
+    repeating-linear-gradient(180deg, transparent 0 26px, rgba(255, 255, 255, .035) 26px 28px);
 }
 .scene--alley::after {
-  left: 58%;
-  top: 12%;
-  width: 90px;
-  height: 90px;
+  left: 63%;
+  top: 11%;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 226, 150, .55) 0%, rgba(255, 226, 150, 0) 70%);
-  box-shadow: -96px 150px 0 -30px rgba(255, 226, 150, .16);
+  background: radial-gradient(circle, #fff6d6 0 38%, rgba(255, 231, 160, .45) 62%, rgba(255, 231, 160, 0) 78%);
+  box-shadow: 0 0 26px 10px rgba(255, 228, 150, .22);
 }
 
 .scene--village { background: linear-gradient(180deg, #ffe6c2 0%, #f0c493 52%, #c99a6c 100%); }
@@ -1588,24 +1588,25 @@ body::before {
 .bubble-layer { position: absolute; inset: 0; pointer-events: none; }
 .bubble {
   position: absolute;
-  top: 16%;
+  top: 2%;
   transform: translateX(-50%);
   background: #fff;
   border: 2px solid #ffd3dd;
   border-radius: 16px;
-  padding: 5px 10px;
-  font-size: 12px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 800;
   color: var(--pink-3);
   white-space: nowrap;
-  box-shadow: 0 6px 16px rgba(198, 141, 120, .22);
-  animation: floatUp 1.7s ease-out forwards;
+  box-shadow: 0 8px 20px rgba(198, 141, 120, .26);
+  animation: floatUp 2s ease-out forwards;
 }
 .bubble b { margin-right: 3px; }
 @keyframes floatUp {
-  0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); }
-  22% { opacity: 1; transform: translate(-50%, -6px) scale(1.02); }
-  100% { opacity: 0; transform: translate(-50%, -74px) scale(1); }
+  0% { opacity: 0; transform: translate(-50%, 12px) scale(.8); }
+  18% { opacity: 1; transform: translate(-50%, -4px) scale(1.03); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -60px) scale(1); }
 }
 
 /* ステージ内のお知らせ */
@@ -1697,6 +1698,7 @@ body::before {
 
 /* フィナーレのステージ */
 .stage.is-finale .stage-scene { filter: saturate(.78) brightness(1.04); }
+.stage.is-finale .stats { opacity: .58; filter: saturate(.78); transition: opacity .6s ease; }
 .stage.is-finale::after {
   content: "";
   position: absolute;

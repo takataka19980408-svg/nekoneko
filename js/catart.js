@@ -197,9 +197,9 @@
     const home = cat && cat.adoptIndex != null && idx != null && idx >= cat.adoptIndex;
     const muts = cat && cat.mutations ? cat.mutations.length : 0;
     const dead = cat && cat.story && idx === steps - 1;
-    const energy = clamp(Math.round(82 - t * 46 + Math.sin(ph + t * 4.4) * 6 + (home ? 6 : 0) + (dead ? -18 : 0)), 6, 100);
-    const food = clamp(Math.round(60 + Math.sin(ph * 1.7 + t * 5.6) * 14 + (home ? 16 : 0) + (dead ? -14 : 0)), 4, 100);
-    const luck = clamp(Math.round(48 + muts * 9 + Math.sin(ph * 2.3 + t * 3.1) * 9 + (home ? 12 : 0)), 4, 100);
+    const energy = clamp(Math.round(82 - t * 34 + Math.sin(ph + t * 4.4) * 5 + (home ? 6 : 0) + (dead ? -14 : 0)), 6, 100);
+    const food = clamp(Math.round(60 + Math.sin(ph * 1.7 + t * 5.6) * 10 + (home ? 14 : 0) + (dead ? -10 : 0)), 4, 100);
+    const luck = clamp(Math.round(48 + muts * 9 + Math.sin(ph * 2.3 + t * 3.1) * 7 + (home ? 10 : 0)), 4, 100);
     return { energy: energy, food: food, luck: luck };
   }
 
