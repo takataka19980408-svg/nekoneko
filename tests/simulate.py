@@ -454,9 +454,11 @@ def main():
           maxAge: 100, peak: {energy: 90, food: 90, luck: 90},
           cat: {ageYears: 100, route: 'street', mutations: [{key: 'odd_eye'}, {key: 'male_calico'}], rarity: 'UR',
                 bossCat: true, nekomata: true, maneki: true, klass: 'domestic', speciesGroup: 'big', adopted: true, shelterBorn: true}});
+        var free = CATGACHA.evaluateAchievements({total: 20, speciesCount: 10, countryCount: 8, adoptCount: 1, maxAge: 12,
+          peak: {energy: 60, food: 60, luck: 60}, cat: {ageYears: 12, route: 'street', mutations: [], rarity: 'R', adopted: false}});
         var pinch = CATGACHA.evaluateAchievements({total: 2, speciesCount: 2, countryCount: 2, adoptCount: 0, maxAge: 4,
           peak: {energy: 50, food: 50, luck: 50}, cat: {ageYears: 4, route: 'owned', mutations: [], rarity: 'N', pinchAvoided: true}});
-        return JSON.stringify({n: keys.length, dup: dup, bad: bad, early: early, great: great, pinch: pinch});
+        return JSON.stringify({n: keys.length, dup: dup, bad: bad, early: early, great: great, pinch: pinch, free: free});
       })()
     """))
     print(f"  実績 {ach['n']}個 / 重複 {ach['dup']} / 属性不足 {ach['bad']}")
@@ -465,8 +467,11 @@ def main():
     check(not ach["dup"], "実績キーが重複")
     check(not ach["bad"], "実績にアイコン/名前/説明の欠け")
     check("first" in ach["early"] and "legend20" not in ach["early"], "実績の初期判定が不正")
-    for key in ("nekomata", "maneki", "freeKing", "great", "legend20", "quarter", "all80", "ur", "dex50", "globe20", "maleCalico", "oddEye", "boss", "shelter", "pinch"):
+    check("freeKing" not in ach["great"], "拾われた猫が「野良のまま」の実績を取っている")
+    check("freeKing" in ach["free"], "野良のまま10歳超えで「自由の王」が付かない")
+    for key in ("nekomata", "maneki", "great", "legend20", "quarter", "all80", "ur", "dex50", "globe20", "maleCalico", "oddEye", "boss", "shelter", "pinch"):
         check(key in ach["great"] or key in ach["pinch"], f"実績条件が満たされない: {key}")
+    check("freeKing" in ach["free"] and "freeKing" not in ach["great"], "自由の王の条件が不正")
 
     # ---- アセット/演出 ----
     print("\n--- アセット・演出 ---")

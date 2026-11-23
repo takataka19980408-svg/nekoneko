@@ -1139,7 +1139,7 @@
     add('reinc100', (c.total || 0) >= 100);
     add('adopt', (c.adoptCount || 0) >= 1);
     add('adopt5', (c.adoptCount || 0) >= 5);
-    add('freeKing', free && age >= 10);
+    add('freeKing', free && !cat.adopted && age >= 10);
     add('boss', !!cat.bossCat);
     add('great', age >= 15);
     add('legend20', age >= 20);

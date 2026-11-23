@@ -1552,8 +1552,8 @@ body::before {
 .collar {
   position: absolute;
   left: 50%;
-  top: 53.4%;
-  width: 33%;
+  top: 54.2%;
+  width: 30%;
   transform: translate(-50%, -50%) scale(.6);
   opacity: 0;
   pointer-events: none;
