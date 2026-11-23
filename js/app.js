@@ -132,6 +132,11 @@
     </div>`;
   }
 
+  function stageLabel(cat, stage) {
+    if (cat.klass === 'wild') return stage === 'kitten' ? 'こども' : stage === 'senior' ? 'シニア' : 'おとな';
+    return STAGE_JP[stage] || '';
+  }
+
   function stepCardHTML(cat, idx, picked) {
     const step = cat.story[idx];
     const isBirth = step.kind === 'birth';
@@ -142,7 +147,7 @@
       <span class="page-tape" aria-hidden="true"></span>
       <div class="page-head">
         <span class="age-badge">${step.ageLabel}</span>
-        <span class="stage-chip">${STAGE_JP[step.stage] || ''}</span>
+        <span class="stage-chip">${stageLabel(cat, step.stage)}</span>
         ${isBirth ? `<span class="rarity r-${cat.rarity}">${cat.rarity}</span>` : ''}
         <span class="page-no">${idx + 1}/${cat.story.length}</span>
       </div>
@@ -167,7 +172,7 @@
       const tilt = (i % 2 === 0 ? -1.1 : 1.1);
       out += `<div class="note note--${s.kind}" style="--tilt:${tilt}deg">
         <span class="note-age">${label}</span>
-        <p class="note-text">${text}</p>
+        <p class="note-text">${chosen ? `<span class="note-pick">🐾 ${chosen.label}</span>` : ''}${text}</p>
       </div>`;
     }
     return out;
