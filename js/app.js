@@ -491,7 +491,7 @@
       const fx = step.fx;
       const chips = fx && fx.chips ? fx.chips : (E.statChips ? E.statChips(opt.effect || {}) : '');
       const heads = fx && fx.headlines ? fx.headlines : [];
-      const traitHTML = fx && fx.trait ? `<b class="fx-trait">🌱 ${fx.trait.label}の気質が育った</b>` : '';
+      const traitHTML = fx && fx.trait ? `<b class="fx-trait">🌱 ${fx.trait.label}が、すこし育った</b>` : '';
       const fxHTML = (chips || heads.length || traitHTML)
         ? `<div class="choice-fx">${chips ? `<span class="fx-chips">${chips}</span>` : ''}${traitHTML}${heads.map(h => `<b class="fx-head">${h}</b>`).join('')}</div>`
         : '';
@@ -813,7 +813,7 @@
       ['目の色', rec.eyeColor || '—'],
       ['珍しさ', `${E.formatOneIn(rec.probability || 0)}${rec.probability ? '（' + E.formatProb(rec.probability) + '）' : ''}`],
       ['境遇', rec.statusLabel || '—'],
-      ['気質', rec.persona && rec.persona.stage ? `${rec.persona.icon || '🌱'} ${rec.persona.label}` : '—'],
+      ['気質', rec.persona && rec.persona.label ? `${rec.persona.icon || '🌱'} ${rec.persona.label}` : '—'],
       ['享年', `${ageText(ageY)}${cause ? '（' + cause + '）' : ''}`]
     ].map(r => `<div class="who-row"><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
     const stats = rec.stats || { energy: 0, food: 0, luck: 0 };

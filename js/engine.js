@@ -623,9 +623,9 @@
     easy: { key: 'easy', icon: '☕', noun: 'のんびり屋', mod: 'のんびりした', desc: 'あわてず、自分のペースで' }
   };
   const TRAIT_KEYS = ['amae', 'solo', 'foodie', 'brave', 'easy'];
-  const TRAIT_STAGE1 = 8;    /* これ以上で「ひとつの気質」が芽吹く */
-  const TRAIT_DUO = 7;       /* 2つ目がこれ以上で、重ねた呼び名になる */
-  const TRAIT_RIPE = 16;     /* ここまで育つと「すっかり〜」 */
+  const TRAIT_STAGE1 = 7;    /* これ以上で「ひとつの気質」が芽吹く */
+  const TRAIT_DUO = 6;       /* 2つ目がこれ以上で、重ねた呼び名になる */
+  const TRAIT_RIPE = 15;     /* ここまで育つと「すっかり〜」 */
   const TRAIT_HINT_CAP = 3;  /* 出来事から拾う分は控えめに（選んだ2択が主役） */
 
   function addTraitScores(dst, add, mul) {
@@ -1525,6 +1525,7 @@
     cat.story.splice(idx + 1, 0, {
       kind: 'adopt', age: a, ageLabel: ageLabel(a), stage: stageForAge(a),
       title: '拾われる', adoptTitle: '拾われる', text, adopted: true,
+      season: seasonFor(cat, a),
       stats: Object.assign({}, cur.stats || baseStats(cat))
     });
     applyBaseStats(cat, { idx: idx, stats: cur.stats || baseStats(cat) });
