@@ -349,11 +349,11 @@
     e(ctx, 'この子の猫生', 540, 177, 22, '#fff', { align: 'center' });
 
     /* 猫の絵 */
-    drawCat(ctx, data, deps || {}, 540, 214, 500);
+    drawCat(ctx, data, deps || {}, 540, 190, 470);
 
     /* 名前 */
     const nameSize = fitFont(ctx, data.name, 780, 62, '900');
-    e(ctx, data.name, 540, 802, nameSize, INK, { align: 'center', weight: '900' });
+    e(ctx, data.name, 540, 764, nameSize, INK, { align: 'center', weight: '900' });
 
     /* 地域・種別・性別 */
     const subParts = [];
@@ -361,7 +361,7 @@
     if (data.species) subParts.push(data.species);
     if (data.gender) subParts.push(data.gender);
     const sub = subParts.join('　｜　');
-    e(ctx, sub, 540, 850, fitFont(ctx, sub, 820, 28, '700'), INK2, { align: 'center', weight: '700' });
+    e(ctx, sub, 540, 812, fitFont(ctx, sub, 820, 28, '700'), INK2, { align: 'center', weight: '700' });
 
     /* 境遇などのバッジ */
     const tags = data.tags.slice(0, 4);
@@ -371,13 +371,13 @@
       total -= 10;
       let tx = 540 - total / 2;
       tags.forEach(t => {
-        const p = pill(ctx, t, tx, 872, 21, '#fff1e4', '#a1703a');
+        const p = pill(ctx, t, tx, 836, 21, '#fff1e4', '#a1703a');
         tx += p.w + 10;
       });
     }
 
     /* 享年 と 珍しさ */
-    const boxY = 940, boxH = 108, boxW = 412;
+    const boxY = 904, boxH = 108, boxW = 412;
     fillRound(ctx, 112, boxY, boxW, boxH, 26, '#fff5ee');
     strokeRound(ctx, 112, boxY, boxW, boxH, 26, '#ffe3d4', 2);
     e(ctx, '🌈 享年', 140, boxY + 40, 22, INK3, { weight: '800' });
@@ -404,7 +404,7 @@
       ctx.font = '700 30px ' + FONT;
       const lines = wrap(ctx, data.caption, 840, 2);
       const cut = lines.join('').length < String(data.caption).length;
-      const startY = 1082;
+      const startY = 1046;
       lines.forEach((ln, i) => {
         const body = (i === 0 ? '「' : '') + ln + (i === lines.length - 1 ? (cut ? '…」' : '」') : '');
         e(ctx, body, 540, startY + i * 34, 28, INK2, { align: 'center', weight: '700' });
@@ -420,7 +420,7 @@
       const totalW = list.reduce((a, t) => a + widthOf(t) + 8, -8);
       let tx = 540 - totalW / 2;
       list.forEach(t => {
-        const p = pill(ctx, t.icon + ' ' + t.label, tx, 1130, size, '#fff8ee', '#a1703a');
+        const p = pill(ctx, t.icon + ' ' + t.label, tx, 1112, size, '#fff8ee', '#a1703a');
         tx += p.w + 8;
       });
     }
