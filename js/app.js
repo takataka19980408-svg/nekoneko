@@ -2048,6 +2048,8 @@
 
     /* 外部からテストできるように公開 */
     root.CATAPP.walk = walk;
+    root.CATAPP.startStory = startStory;
+    root.CATAPP.renderStory = renderStory;
     root.CATAPP.skipAll = skipAll;
     root.CATAPP.choose = choose;
     root.CATAPP.share = share;
