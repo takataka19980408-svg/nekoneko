@@ -939,7 +939,8 @@
       started: false, choiceTimer: null, choiceLeft: null, choiceStart: 0, autoPicked: false,
       albumId: null, albumFrom: null, albumFilter: 'all',
       shownPinch: false, cardURL: '', cardName: '',
-      traceInit: false, traceKeys: {}, traceList: [], spoken: {}, walkTimer: null
+      traceInit: false, traceKeys: {}, traceList: [], spoken: {}, walkTimer: null,
+      trotting: false, trailTimer: null, trailN: 0
     };
 
     const el = {
@@ -955,7 +956,7 @@
       memories: $('memories'), memoryList: $('memoryList'),
       catStage: $('catStage'), stageScene: $('stageScene'), stageParticles: $('stageParticles'),
       stageSeason: $('stageSeason'),
-      catActor: $('catActor'), stageToast: $('stageToast'), stats: $('stats'),
+      catActor: $('catActor'), stageToast: $('stageToast'), stats: $('stats'), stageTrail: $('stageTrail'),
       tapHint: $('tapHint'), stageMood: $('stageMood'),
       autoBar: $('autoBar'),
       autoBtn: $('autoBtn'), autoBtnIcon: $('autoBtnIcon'), autoBtnText: $('autoBtnText'),
@@ -1015,6 +1016,14 @@
       if (state.shownScene !== sig) {
         state.shownScene = sig;
         el.stageScene.className = 'stage-scene scene--' + key + (season ? ' season--' + season : '');
+        /* 手描きの風景（遠景・中景・地面の3枚が左へ流れる） */
+        if (el.stageScene && typeof A.sceneryHTML === 'function') {
+          el.stageScene.innerHTML = A.sceneryHTML(key);
+          if (el.stageScene.style && typeof A.sceneVars === 'function') {
+            el.stageScene.style.cssText = A.sceneVars(key);
+          }
+        }
+        if (el.stageTrail) el.stageTrail.innerHTML = '';
         el.stageParticles.innerHTML = A.particlesHTML(cat, idx, dead);
       }
       if (el.stageSeason) el.stageSeason.className = 'stage-season' + (season ? ' season--' + season : '');
@@ -1025,10 +1034,68 @@
       }
     }
 
+    /* --- 足あとと土ぼこり（進んでいることを足もとで見せる） --- */
+    function spawnTrail(kind) {
+      const layer = el.stageTrail;
+      if (!layer || !state.started) return;
+      const doc = document;
+      if (!doc || typeof doc.createElement !== 'function') return;
+      const node = doc.createElement('span');
+      if (!node || !node.classList || !layer.appendChild) return;
+      if (layer.childNodes && layer.childNodes.length > 18) return;
+      state.trailN = (state.trailN || 0) + 1;
+      const n = state.trailN;
+      const left = 46 + (n % 5) * 2.2;
+      const t = root.setTimeout || setTimeout;
+      if (kind === 'dust') {
+        node.className = 'trail-dust';
+        node.style.left = (left + 2) + '%';
+        node.style.setProperty && node.style.setProperty('--d', (n % 3 === 0 ? 1 : -1) + 'px');
+        layer.appendChild(node);
+        t(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 900);
+        return;
+      }
+      node.className = 'trail-paw' + (n % 2 ? ' is-l' : ' is-r');
+      node.style.left = left + '%';
+      node.style.setProperty && node.style.setProperty('--r', ((n % 4) - 1.5) * 9 + 'deg');
+      node.textContent = '🐾';
+      layer.appendChild(node);
+      t(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 1500);
+    }
+
+    /* --- オート中は歩き続ける（トコトコ・背景・足あと） --- */
+    function startTrail() {
+      if (state.trailTimer) return;
+      if (typeof root.setInterval !== 'function') return;
+      spawnTrail('paw');
+      state.trailTimer = root.setInterval(function () {
+        if (!state.trotting) return;
+        spawnTrail(state.trailN % 3 === 0 ? 'dust' : 'paw');
+      }, state.speed === 2 ? 300 : 460);
+    }
+
+    function stopTrail() {
+      if (state.trailTimer && typeof root.clearInterval === 'function') root.clearInterval(state.trailTimer);
+      state.trailTimer = null;
+    }
+
+    function setTrot(on) {
+      const want = !!on;
+      if (state.trotting === want) return;
+      state.trotting = want;
+      const art = document.getElementById('catArt');
+      if (el.catStage && el.catStage.classList) el.catStage.classList.toggle('is-trotting', want);
+      if (art && art.classList) art.classList.toggle('is-trotting', want);
+      if (want) startTrail();
+      else { stopTrail(); if (el.stageTrail) el.stageTrail.innerHTML = ''; }
+    }
+
     /* --- 1歩分のトコトコ歩き＋背景スクロール --- */
     function walkMotion() {
       const art = document.getElementById('catArt');
       const scene = el.stageScene;
+      spawnTrail('paw');
+      spawnTrail('dust');
       if (scene && scene.classList) {
         scene.classList.remove('is-walking');
         void scene.offsetWidth;
@@ -1097,6 +1164,8 @@
       state.shownScene = null;
       state.adopted = false;
       state.shownPinch = false;
+      setTrot(false);
+      if (el.stageTrail) el.stageTrail.innerHTML = '';
       el.catActor.innerHTML = A.actorHTML(cat, { stage: 'kitten' });
       el.catStage.classList.remove('is-finale');
       el.catStage.classList.remove('is-pinch');
@@ -1286,6 +1355,7 @@
       state.auto = !state.auto;
       if (state.auto) { scheduleAuto(); startChoiceClock(); }
       else { clearAuto(); stopChoiceClock(); updateAutoUI(); }
+      setTrot(!!(state.started && state.auto && !autoBlocked()));
     }
 
     function setSpeed(n) {
@@ -1294,6 +1364,7 @@
       if (state.auto && !autoBlocked()) scheduleAuto();
       else updateAutoUI();
       if (pendingChoice() && state.auto) startChoiceClock();
+      if (state.trotting) { stopTrail(); startTrail(); }
     }
 
     /* --- 2択のカウントダウン（放置したらおまかせ選択） --- */
@@ -1426,6 +1497,7 @@
       const isDeath = step.kind === 'death';
       const needChoice = !!step.choice && step.chosen == null;
       el.walkBtn.hidden = isDeath || needChoice;
+      if (el.tapHint) el.tapHint.hidden = isDeath || idx > 2;
       el.walkBtn.classList.toggle('is-start', !state.started);
       if (el.walkText) el.walkText.textContent = !state.started ? 'この子の猫生を歩む' : '猫生を歩む';
       el.walkSub.textContent = !state.started
@@ -1433,6 +1505,9 @@
         : needChoice ? 'えらんでね' : '1歩すすむ';
       el.skipBtn.hidden = isDeath;
       if (el.autoBar) el.autoBar.hidden = !state.started;
+
+      /* オートで進んでいる間は、止まって見えないよう歩き続ける */
+      setTrot(!!(state.started && state.auto && !needChoice && !isDeath && !autoBlocked()));
 
       el.finale.hidden = !isDeath;
       if (isDeath) {
@@ -1546,6 +1621,7 @@
 
     function backHome() {
       clearAuto();
+      setTrot(false);
       stopChoiceClock();
       state.choiceLeft = null;
       el.story.hidden = true;
