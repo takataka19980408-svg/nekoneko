@@ -404,23 +404,23 @@
       ctx.font = '700 30px ' + FONT;
       const lines = wrap(ctx, data.caption, 840, 2);
       const cut = lines.join('').length < String(data.caption).length;
-      const startY = 1050;
+      const startY = 1082;
       lines.forEach((ln, i) => {
         const body = (i === 0 ? '「' : '') + ln + (i === lines.length - 1 ? (cut ? '…」' : '」') : '');
-        e(ctx, body, 540, startY + i * 40, 29, INK2, { align: 'center', weight: '700' });
+        e(ctx, body, 540, startY + i * 34, 28, INK2, { align: 'center', weight: '700' });
       });
     }
 
     /* 残した思い出の痕跡（3つまで。はみ出すときは減らす） */
     if (data.traces && data.traces.length) {
       const list = data.traces.slice(0, 3);
-      const size = 20;
+      const size = 19;
       const widthOf = (t) => { ctx.font = '800 ' + size + 'px ' + FONT; return ctx.measureText(t.icon + ' ' + t.label).width + size * 1.5; };
       while (list.length && list.reduce((a, t) => a + widthOf(t) + 8, -8) > 900) list.pop();
       const totalW = list.reduce((a, t) => a + widthOf(t) + 8, -8);
       let tx = 540 - totalW / 2;
       list.forEach(t => {
-        const p = pill(ctx, t.icon + ' ' + t.label, tx, 1128, size, '#fff8ee', '#a1703a');
+        const p = pill(ctx, t.icon + ' ' + t.label, tx, 1130, size, '#fff8ee', '#a1703a');
         tx += p.w + 8;
       });
     }
