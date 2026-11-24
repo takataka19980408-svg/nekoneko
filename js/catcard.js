@@ -402,8 +402,10 @@
     /* 代表の一言 */
     if (data.caption) {
       ctx.font = '700 30px ' + FONT;
-      const lines = wrap(ctx, data.caption, 840, 2);
-      const cut = lines.join('').length < String(data.caption).length;
+      const all = wrap(ctx, data.caption, 840, 99);
+      const cut = all.length > 2;
+      const lines = all.slice(0, 2);
+      if (cut && lines[1]) lines[1] = lines[1].slice(0, Math.max(1, lines[1].length - 2));
       const startY = 1046;
       lines.forEach((ln, i) => {
         const body = (i === 0 ? '「' : '') + ln + (i === lines.length - 1 ? (cut ? '…」' : '」') : '');
