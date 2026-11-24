@@ -1064,7 +1064,8 @@
       const cls = 'trace-chip' + (isNew ? ' is-new' : '')
         + (tr.key === 'boss' || tr.key === 'territory' ? ' is-boss' : '')
         + (tr.key === 'peace' ? ' is-peace' : '');
-      const note = tr.note ? ` title="${tr.note}"` : '';
+      const label = `${tr.icon} ${tr.label}`;
+      const note = tr.note ? ` title="${tr.note}" aria-label="${label}、${tr.note}"` : ` aria-label="${label}"`;
       return `<span class="${cls}" data-trace="${tr.key}"${note}><b>${tr.icon}</b>${tr.label}</span>`;
     }
 
