@@ -624,7 +624,7 @@
   };
   const TRAIT_KEYS = ['amae', 'solo', 'foodie', 'brave', 'easy'];
   const TRAIT_STAGE1 = 7;    /* これ以上で「ひとつの気質」が芽吹く */
-  const TRAIT_DUO = 6;       /* 2つ目がこれ以上で、重ねた呼び名になる */
+  const TRAIT_DUO = 9;       /* 2つ目がこれ以上で、重ねた呼び名になる */
   const TRAIT_RIPE = 15;     /* ここまで育つと「すっかり〜」 */
   const TRAIT_HINT_CAP = 3;  /* 出来事から拾う分は控えめに（選んだ2択が主役） */
 
@@ -737,7 +737,9 @@
     let stage = 0;
     if (topScore >= TRAIT_STAGE1) {
       stage = 1;
-      if (secondScore >= Math.max(TRAIT_DUO, Math.round(topScore * 0.7))) stage = topScore >= TRAIT_RIPE ? 3 : 2;
+      /* 2つ目は「しきい値を一度超えたら戻らない」。
+         伸び続ける1つ目に引きずられて呼び名が短く戻らないようにする。 */
+      if (secondScore >= TRAIT_DUO) stage = topScore >= TRAIT_RIPE ? 3 : 2;
     }
     const t1 = TRAITS[top], t2 = TRAITS[second];
     let label = 'これから育つ';

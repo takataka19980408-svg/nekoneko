@@ -1089,7 +1089,7 @@ def main():
           traceBad: [], traceOver: 0, dupTrace: 0, determinism: 0, birthTrace: 0,
           stageChanged: 0, longStage0: 0, bossCats: 0, bossNoTrace: 0, bossNoWord: 0,
           finaleOk: 0, finaleBad: [], albumOk: 0, albumBad: [], cardBad: [],
-          maxTraces: 0, minTraces: 99, traceKeys: {}, seasonMissing: {}
+          maxTraces: 0, minTraces: 99, traceKeys: {}, seasonMissing: {}, back: 0, saw1: 0
         };
         for (var i = 0; i < 600; i++) {
           var c = CATGACHA.rollCat(5000 + i * 131);
@@ -1100,6 +1100,15 @@ def main():
           else out.badLabel.push('birth:' + p0.label);
           var p = CATGACHA.personalityAt(c, c.story.length - 1);
           out.stageDist[p.stage] = (out.stageDist[p.stage] || 0) + 1;
+          /* 呼び名は戻らない（育つ一方） */
+          var prevStage = 0, sawStage1 = false;
+          for (var kk = 0; kk < c.story.length; kk++) {
+            var sk = CATGACHA.personalityAt(c, kk).stage;
+            if (sk < prevStage) out.back++;
+            if (sk === 1) sawStage1 = true;
+            prevStage = sk;
+          }
+          if (sawStage1) out.saw1++;
           if (p.stage) {
             out.words[p.noun] = (out.words[p.noun] || 0) + 1;
             var hit = CATGACHA.TRAIT_KEYS.some(function(k){ return p.label.indexOf(CATGACHA.TRAITS[k].noun) >= 0; });
@@ -1165,6 +1174,7 @@ def main():
     print(f"  誕生直後「これから育つ」: {grow['stage0AtBirth']}/{n}")
     print(f"  育った気質の分布: {grow['stageDist']} / 名前: {grow['words']}")
     print(f"  歩くうちに呼び名が変わった: {grow['stageChanged']}/{n} / 長寿なのに未成熟: {grow['longStage0']}")
+    print(f"  一度でも芽吹いた猫: {grow['saw1']}/{n} / 呼び名が戻った回数: {grow['back']}")
     print(f"  痕跡: ひと猫生 {grow['minTraces']}〜{grow['maxTraces']}個 / 種類 {len(grow['traceKeysList'])}種")
     print(f"  ボス猫 {grow['bossCats']}匹（痕跡なし {grow['bossNoTrace']} / 気質なし {grow['bossNoWord']}）")
     print(f"  フィナーレ反映 {grow['finaleOk']}/{n} ・ 記録反映 {grow['albumOk']}/{n}")
@@ -1175,6 +1185,8 @@ def main():
     check(sum(v for k, v in grow["stageDist"].items() if k != "0") >= n * 0.8, "気質が育たない猫が多すぎる")
     check(len(grow["words"]) >= 4, f"気質の種類が偏りすぎ: {grow['words']}")
     check(grow["longStage0"] <= n * 0.02, "長生きなのに気質が未成熟の猫が多すぎる")
+    check(grow["back"] == 0, "気質の呼び名が途中で戻っている（育つ一方でない）")
+    check(grow["saw1"] >= n * 0.7, "一度も気質が芽吹かない猫が多すぎる")
     check(not grow["traceBad"], f"痕跡のラベルが壊れている: {grow['traceBad'][:3]}")
     check(grow["traceOver"] == 0, "痕跡が8個を超えている")
     check(grow["dupTrace"] == 0, "同じ痕跡が重複している")
