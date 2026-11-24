@@ -1906,14 +1906,14 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 .fw-chip.is-seed { opacity: .85; }
 .fw-chip.is-form { background: #fdf0d8; }
 .fw-thanks {
-  margin: 9px 0 0;
+  margin: 7px 0 0;
   text-align: center;
   font-family: var(--font-hand);
   font-size: 12px;
   letter-spacing: .16em;
   color: var(--ink-3);
 }
-.fw-btn { width: 100%; margin-top: 11px; }
+.fw-btn { width: 100%; margin-top: 9px; }
 
 /* ============================================================
    フィナーレ
