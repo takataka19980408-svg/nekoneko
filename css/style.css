@@ -925,7 +925,7 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 }
 .cat-walk-img.is-on { opacity: 1; }
 /* 横向きのときは横長なので、少しだけ枠を広げる */
-.cat-art.is-side { bottom: 11%; width: 44%; max-width: 168px; }
+.cat-art.is-side { bottom: 14%; width: 44%; max-width: 168px; }
 .cat-art.is-side .cat-walk { opacity: 1; }
 .cat-art.is-side .cat-img { opacity: 0; transition-duration: .16s; }
 /* 首輪は正面のお座り用の座標なので、横向きでは無理に乗せない（名札＝状況で伝える） */

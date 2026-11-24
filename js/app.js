@@ -1181,7 +1181,7 @@
       state.walkBurst = t(function () {
         state.walkBurst = null;
         if (!state.trotting) stopWalkFrames();
-      }, 1400);
+      }, 2000);
       if (state.walkTimer) clearTimeout(state.walkTimer);
       state.walkTimer = t(function () {
         if (scene && scene.classList) scene.classList.remove('is-walking');
