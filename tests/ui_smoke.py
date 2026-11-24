@@ -559,7 +559,7 @@ def main():
         print("[NG] お見送りを飛ばしてフィナーレが出ている")
         return 1
     fw = ctx.eval("document.getElementById('farewellBody').innerHTML")
-    if "静かに旅立ちました" not in fw or "享年" not in fw:
+    if "静かに旅立ちました" not in fw or ("享年" not in fw and "生後" not in fw):
         print("[NG] お見送り画面の文面が足りない", fw[:120])
         return 1
     if "undefined" in fw or "NaN" in fw:

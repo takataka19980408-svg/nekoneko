@@ -668,14 +668,15 @@
       <div class="fw-meta">
         <span>${cat.region.flag} ${placeText(cat)}</span><i>｜</i>
         <span>${cat.speciesName}</span><i>｜</i>
-        <span class="fw-age">享年 ${step.ageLabel || ageText(cat.ageYears)}</span>
+        <span class="fw-age">${String(step.ageLabel || ageText(cat.ageYears)).indexOf('生後') === 0 ? '' : '享年 '}${step.ageLabel || ageText(cat.ageYears)}</span>
       </div>
       ${words ? `<p class="fw-words">「${words}」</p>` : ''}
       <div class="fw-chips">
         ${persona.stage ? `<span class="fw-chip">${persona.icon} 育った気質：${persona.label}</span>` : '<span class="fw-chip is-seed">🌱 まだ子どものまま、旅立った</span>'}
         ${cat.adopted ? '<span class="fw-chip">🔔 途中で家族の猫になった子</span>' : ''}
         ${form ? `<span class="fw-chip is-form">${form}</span>` : ''}
-      </div>`;
+      </div>
+      <p class="fw-thanks" aria-hidden="true">🐾 いままで、ありがとう。</p>`;
   }
 
   function shareText(cat) {
@@ -1244,6 +1245,7 @@
       const fresh = document.getElementById('catArt');
       if (fresh && fresh.classList) { fresh.classList.remove('is-side'); fresh.classList.remove('is-rest'); }
       el.catStage.classList.remove('is-finale');
+      el.catStage.classList.remove('is-farewell');
       el.catStage.classList.remove('is-pinch');
       state.side = false;
       state.walkFrame = 1;
@@ -1324,6 +1326,7 @@
       paintScene(cat, idx, dead);
       el.stats.innerHTML = A.statsHTML(cat, idx);
       el.catStage.classList.toggle('is-finale', dead);
+      el.catStage.classList.toggle('is-farewell', dead);
       if (dead) el.tapHint.hidden = true;
 
       /* ❤️🐟🍀 と運命の連動：ピンチは枠が赤く脈打ち、空腹は小さなサインが出る */

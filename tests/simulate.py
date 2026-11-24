@@ -1202,7 +1202,8 @@ def main():
           /* チーン…お見送り画面：名前・享年・最期のひとこと・気質 */
           var fw = CATAPP.buildFarewellHTML(c);
           if (fw.indexOf(String(c.name) + '</b>は、静かに旅立ちました') >= 0
-              && fw.indexOf('享年') >= 0 && fw.indexOf('undefined') < 0 && fw.indexOf('NaN') < 0) out.farewellOk++;
+              && (fw.indexOf('享年') >= 0 || fw.indexOf('生後') >= 0)
+              && fw.indexOf('undefined') < 0 && fw.indexOf('NaN') < 0) out.farewellOk++;
           else out.farewellBad.push(c.name);
           var rec = CATAPP.albumEntry(c);
           var wantLabel = p.stage ? p.label : (Number(c.ageYears) >= 2 ? 'どこにも寄らない自由な猫' : 'これから育つ');
