@@ -1379,6 +1379,12 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
   padding: 0 7px;
   line-height: 1.7;
 }
+/* 誕生ページは「だれか」を1画面で読み切れるよう、少しだけ詰める */
+.page--birth { padding-top: 9px; padding-bottom: 10px; }
+.page--birth .birth-name { font-size: 21px; }
+.page--birth .page-text { font-size: 13.5px; line-height: 1.72; }
+.page--birth .page-head { margin-bottom: 3px; }
+.page--birth .who-card { margin-top: 5px; padding: 5px 8px 6px; }
 .page--adopt { background-image: repeating-linear-gradient(180deg, rgba(180, 130, 80, .06) 0 1px, transparent 1px 5px); }
 .page--evolve { background-image: repeating-linear-gradient(180deg, rgba(120, 110, 170, .07) 0 1px, transparent 1px 5px); }
 
