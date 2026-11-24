@@ -20,8 +20,11 @@
   const CAUSE_JP = {
     early: '早すぎる別れ', illness: '病気', accident: '事故', natural: '大往生',
     starve: '飢え', fight: 'ケンカ', human: '人の手', pinch: '不慮の事故',
-    nekomata: '猫又', maneki: '看板猫'
+    nekomata: '猫又', maneki: '看板猫',
+    star: 'スター猫', stationmaster: '駅長猫', buffboss: 'ガチムチボス', spacecat: '宇宙猫'
   };
+  /* 6種の特別ルートの呼び名（図鑑・カード・記録の表示はここに集約） */
+  const SPECIAL_INFO = (A && A.SPECIAL) || {};
 
   /* ---------- ダブルタップ拡大の抑止（iOS Safari 対策） ----------
      viewport の user-scalable=no は iOS 10 以降ほぼ無視されるので、
@@ -206,14 +209,18 @@
     const out = [];
     /* 生まれた日・最期は年齢チップと見出しで分かるので、バッジは足さない */
     if (step.kind === 'adopt') out.push(step.maneki ? '🏮 お店に迎えられた日' : '🏡 拾われた日');
-    else if (step.kind === 'evolve') out.push('🔮 猫又になった日');
-    else if (step.kind === 'event') {
+    else if (step.kind === 'evolve') {
+      const evo = SPECIAL_INFO[step.evolve];
+      out.push(evo ? evo.icon + ' ' + evo.short + 'になった日' : '🔮 猫又になった日');
+    } else if (step.kind === 'event') {
       const ms = E.milestoneAt(cat.story, i);
       if (ms) out.push(ms.icon + ' ' + ms.label);
     }
     const f = formAt(cat, i);
-    if (f === 'nekomata' && step.kind !== 'evolve') out.push('🔮 猫又');
-    if (f === 'maneki' && step.kind !== 'adopt') out.push('🏮 招き猫');
+    if (f && !(step.kind === 'evolve' && step.evolve === f) && !(f === 'maneki' && step.kind === 'adopt')) {
+      const info = SPECIAL_INFO[f];
+      if (info) out.push(info.icon + ' ' + info.short);
+    }
     if (step.choice && step.chosen != null) {
       const o = step.choice.options[step.chosen];
       if (o && o.effect && o.effect.boss) out.push('👑 ボス猫');
@@ -281,6 +288,8 @@
       bossCat: !!cat.bossCat,
       nekomata: !!cat.nekomata,
       maneki: !!cat.maneki,
+      form: cat.formKey && SPECIAL_INFO[cat.formKey] ? cat.formKey : (cat.nekomata ? 'nekomata' : cat.maneki ? 'maneki' : ''),
+      star: !!cat.star, stationmaster: !!cat.stationmaster, buffboss: !!cat.buffboss, spacecat: !!cat.spacecat,
       finalStage: stage,
       stats: { energy: st.energy, food: st.food, luck: st.luck },
       hungry: !!cat.hungerWeak,
@@ -294,6 +303,7 @@
       art: {
         type: A.typeFor(cat), stage: stage === 'kitten' ? 'kitten' : 'adult',
         collar: !!cat.adopted, nekomata: !!cat.nekomata, maneki: !!cat.maneki,
+        form: cat.formKey && SPECIAL_INFO[cat.formKey] ? cat.formKey : (cat.nekomata ? 'nekomata' : cat.maneki ? 'maneki' : ''),
         senior: stage === 'senior'
       },
       logs: albumLogs(cat)
@@ -313,13 +323,17 @@
     if (cat.bossCat) dex.bossCount = (dex.bossCount || 0) + 1;
     if (cat.nekomata) dex.nekomata = (dex.nekomata || 0) + 1;
     if (cat.maneki) dex.maneki = (dex.maneki || 0) + 1;
+    ['star', 'stationmaster', 'buffboss', 'spacecat'].forEach(k => {
+      if (cat[k]) dex[k] = (dex[k] || 0) + 1;
+    });
     if (!dex.rarest || cat.probability < dex.rarest.probability) {
       dex.rarest = { probability: cat.probability, name: cat.name, species: cat.speciesName, popularity: cat.population, at: Date.now() };
     }
     dex.history.unshift({
       name: cat.name, species: cat.speciesName, region: cat.region.name,
       age: cat.ageYears, at: Date.now(),
-      adopted: !!cat.adopted, boss: !!cat.bossCat, nekomata: !!cat.nekomata, maneki: !!cat.maneki
+      adopted: !!cat.adopted, boss: !!cat.bossCat, nekomata: !!cat.nekomata, maneki: !!cat.maneki,
+      star: !!cat.star, stationmaster: !!cat.stationmaster, buffboss: !!cat.buffboss, spacecat: !!cat.spacecat
     });
     dex.history = dex.history.slice(0, 12);
     /* 猫生のフル記録（図鑑の「過去の猫生」） */
@@ -509,9 +523,10 @@
     </div>`;
   }
 
-  /* その時点の姿（猫又・招き猫） */
+  /* その時点の姿（猫又・招き猫・スター猫・駅長猫・ガチムチボス・宇宙猫） */
   function formAt(cat, idx) {
     if (!cat || !cat.story || !cat.story[idx]) return null;
+    if (E.formKeyAt) return E.formKeyAt(cat, idx);
     if (cat.nekomata && cat.story[idx].age >= 100) return 'nekomata';
     if (cat.maneki && cat.adoptIndex != null && idx >= cat.adoptIndex) return 'maneki';
     return null;
@@ -523,8 +538,13 @@
     const ms = step && step.kind === 'death' ? null : E.milestoneAt(cat.story, idx);
     if (ms) out.push(`<span class="milestone-badge tone-${ms.tone}">${ms.icon} ${ms.label}</span>`);
     const f = formAt(cat, idx);
-    if (f === 'nekomata' && step && step.evolve === 'nekomata') out.push('<span class="form-badge is-nekomata">🔮 猫又</span>');
-    if (f === 'maneki' && step && step.kind === 'adopt') out.push('<span class="form-badge is-maneki">🏮 招き猫</span>');
+    if (f && step && ((f === 'nekomata' && step.evolve === 'nekomata') || (f === 'maneki' && step.kind === 'adopt'))) {
+      const info = SPECIAL_INFO[f] || { icon: '🔮', name: '猫又', tone: f };
+      out.push(`<span class="form-badge is-${f}">${info.icon} ${info.name}</span>`);
+    } else if (f && step && step.kind === 'evolve' && step.evolve === f) {
+      const info = SPECIAL_INFO[f];
+      out.push(`<span class="form-badge is-${f}">${info.icon} ${info.name}</span>`);
+    }
     if (step && step.choice && step.chosen != null) {
       const o = step.choice.options[step.chosen];
       if (o && o.effect && o.effect.boss) out.push('<span class="form-badge is-boss">👑 ボス猫</span>');
@@ -537,7 +557,8 @@
     const step = cat.story[idx];
     const isDeath = step.kind === 'death';
     const isAdopt = step.kind === 'adopt';
-    const isEvolve = step.kind === 'evolve' || step.evolve === 'nekomata';
+    const isEvolve = step.kind === 'evolve' || !!step.evolve;
+    const evo = step.evolve && SPECIAL_INFO[step.evolve] ? SPECIAL_INFO[step.evolve] : null;
     const pick = step.chosen != null ? step.chosen : (picked ? picked[idx] : undefined);
 
     /* 誕生のページは「この子はだれか」と「どれだけ珍しいか」を主役にする */
@@ -566,7 +587,7 @@
         ${isAdopt ? `<span class="adopt-tag">${step.maneki || cat.maneki ? '🏮 お店に迎えられた' : '🏡 家族に迎えられた'}</span>` : ''}
       </div>
       <div class="page-badges">${badgeHTML(cat, idx)}</div>
-      <h2 class="page-title">${isDeath ? '🌈 最期' : isAdopt ? '🏡 ' + (step.adoptTitle || '拾われる') : isEvolve ? '🔮 ' + (step.title || '猫又になる') : '【' + step.title + '】'}</h2>
+      <h2 class="page-title">${isDeath ? '🌈 最期' : isAdopt ? '🏡 ' + (step.adoptTitle || '拾われる') : isEvolve ? (evo ? evo.icon : '🔮') + ' ' + (step.title || (evo ? evo.name : '猫又になる')) : '【' + step.title + '】'}</h2>
       <p class="page-text">${step.text}</p>
       ${step.choice ? choiceHTML(step, pick) : ''}
     </article>`;
@@ -616,8 +637,10 @@
     const lastIdx = Math.max(0, (cat.story || []).length - 1);
     const persona = personalityOf(cat, lastIdx);
     const traces = E.tracesAt ? E.tracesAt(cat, lastIdx) : [];
-    const form = cat.nekomata ? '<div class="finale-form is-nekomata">🔮 猫又（百年の猫生）</div>'
-      : cat.maneki ? '<div class="finale-form is-maneki">🏮 招き猫（看板猫の一生）</div>'
+    const fk = formAt(cat, lastIdx);
+    const finfo = fk ? SPECIAL_INFO[fk] : null;
+    const form = finfo
+      ? `<div class="finale-form is-${fk}">${finfo.icon} ${finfo.name}${fk === 'nekomata' ? '（百年の猫生）' : fk === 'maneki' ? '（看板猫の一生）' : ''}</div>`
       : cat.bossCat ? '<div class="finale-form is-boss">👑 ボス猫</div>' : '';
     const personaHTML = `<div class="finale-persona${persona.stage ? '' : ' is-seed'}">🌱 育った気質：${persona.stage ? persona.label : (Number(cat.ageYears) >= 2 ? 'どこにも寄らない自由な猫' : 'これから育つ（まだ子どもだった）')}</div>`;
     const tracesHTML = traces.length
@@ -660,8 +683,10 @@
     const step = cat.story[lastIdx] || {};
     const persona = personalityOf(cat, lastIdx);
     const words = step.text || cat.caption || '';
-    const form = cat.nekomata ? '🔮 百年の猫生を生ききった猫又'
-      : cat.maneki ? '🏮 お店の看板猫だった子'
+    const fk = formAt(cat, lastIdx);
+    const finfo = fk ? SPECIAL_INFO[fk] : null;
+    const form = finfo
+      ? `${finfo.icon} ${fk === 'nekomata' ? '百年の猫生を生ききった猫又' : fk === 'maneki' ? 'お店の看板猫だった子' : finfo.name + 'だった子'}`
       : cat.bossCat ? '👑 この街のボス猫だった子' : '';
     return `
       <p class="fw-title"><b>${cat.name}</b>は、静かに旅立ちました</p>
@@ -684,8 +709,10 @@
       `【世界猫生ガチャ】${cat.name}`,
       `${cat.region.flag} ${placeText(cat)}の${cat.statusLabel}・${cat.speciesName}／享年${ageText(cat.ageYears)}`
     ];
-    if (cat.nekomata) lines.push('🔮 100歳まで生きて、猫又になった');
-    else if (cat.maneki) lines.push('🏮 お店に迎えられて、招き猫になった');
+    const fk = formAt(cat, Math.max(0, (cat.story || []).length - 1));
+    if (fk === 'nekomata') lines.push('🔮 100歳まで生きて、猫又になった');
+    else if (fk === 'maneki') lines.push('🏮 お店に迎えられて、招き猫になった');
+    else if (fk && SPECIAL_INFO[fk]) lines.push(SPECIAL_INFO[fk].icon + ' ' + SPECIAL_INFO[fk].name + 'だった');
     else if (cat.bossCat) lines.push('👑 この街のボス猫だった');
     if (cat.adopted) lines.push('🏡 途中で人に拾われて、家族の猫になった');
     const lastIdx = Math.max(0, (cat.story || []).length - 1);
@@ -733,9 +760,10 @@
   /* ---------- 図鑑：過去の猫生（一覧・詳細） ---------- */
   function albumFlagsHTML(rec) {
     const out = [];
-    if (rec.nekomata) out.push(['🔮', '猫又']);
-    else if (rec.maneki) out.push(['🏮', '招き猫']);
-    if (rec.bossCat) out.push(['👑', 'ボス猫']);
+    const fk = rec.form || (rec.nekomata ? 'nekomata' : rec.maneki ? 'maneki' : '');
+    const finfo = fk && SPECIAL_INFO[fk];
+    if (finfo) out.push([finfo.icon, finfo.short || finfo.name]);
+    if (rec.bossCat && fk !== 'buffboss') out.push(['👑', 'ボス猫']);
     if (rec.adopted) out.push(['🏡', rec.maneki ? 'お店の子' : '家族の子']);
     if (rec.hungry) out.push(['🍽', '空腹が続いた']);
     return out.map(b => `<span class="album-flag">${b[0]} ${b[1]}</span>`).join('');
@@ -743,8 +771,10 @@
 
   function albumStill(rec, cls) {
     const art = rec && rec.art ? rec.art : {};
+    const fk = art.form || rec.form || (art.nekomata || rec.nekomata ? 'nekomata' : art.maneki || rec.maneki ? 'maneki' : '');
     return A.stillHTML(art.type, {
       stage: art.stage, collar: art.collar || rec.adopted,
+      form: fk && SPECIAL_INFO[fk] ? fk : '',
       nekomata: art.nekomata || rec.nekomata, maneki: art.maneki || rec.maneki,
       senior: !!art.senior, alt: (rec && rec.name) || '猫', cls: cls
     });
@@ -930,13 +960,19 @@
       ['ボス猫になった', (dex.bossCount || 0) + '回'],
       ['猫又になった', (dex.nekomata || 0) + '回'],
       ['招き猫になった', (dex.maneki || 0) + '回'],
+      ['📺 スター猫になった', (dex.star || 0) + '回'],
+      ['🎩 駅長猫になった', (dex.stationmaster || 0) + '回'],
+      ['💪 ガチムチボスになった', (dex.buffboss || 0) + '回'],
+      ['🚀 宇宙猫になった', (dex.spacecat || 0) + '回'],
       ['いちばん珍しい猫', rarestText(dex)],
       ['図鑑コンプ率', got + ' / ' + TOTAL_TARGETS + '（' + pct + '%）'],
       ['実績', achGot + ' / ' + E.ACHIEVEMENTS.length]
     ].map(r => `<li><span>${r[0]}</span><span>${r[1]}</span></li>`).join('');
     const albums = Array.isArray(dex.albums) ? dex.albums : [];
     const hist = dex.history.map((h, i) => {
-      const mark = h.nekomata ? '🔮' : h.maneki ? '🏮' : h.boss ? '👑' : h.adopted ? '🏡' : '';
+      const mark = h.nekomata ? '🔮' : h.maneki ? '🏮'
+        : h.spacecat ? '🚀' : h.star ? '📺' : h.stationmaster ? '🎩' : h.buffboss ? '💪'
+        : h.boss ? '👑' : h.adopted ? '🏡' : '';
       const rec = albums[i];
       /* 同じ順番（新しい順）で積まれているので、名前と種別が一致するときだけ詳細に飛ばす */
       const link = (rec && rec.name === h.name && rec.speciesName === h.species) ? rec.id : null;
@@ -1239,6 +1275,8 @@
       state.shownScene = null;
       state.adopted = false;
       state.shownPinch = false;
+      state.shownForm = null;
+      state.side = null;
       setTrot(false);
       if (el.stageTrail) el.stageTrail.innerHTML = '';
       el.catActor.innerHTML = A.actorHTML(cat, { stage: 'kitten' });
@@ -1261,6 +1299,15 @@
       const step = cat.story[idx];
       const dead = step.kind === 'death';
       const stage = step.stage;
+
+      /* 特別ルートに進化した瞬間、ステージの猫を専用イラストに差し替える */
+      const form = formAt(cat, idx);
+      const formChanged = form !== state.shownForm;
+      if (formChanged && form) {
+        state.shownForm = form;
+        el.catActor.innerHTML = A.actorHTML(cat, { stage: 'adult', form: form });
+        state.side = null;
+      }
 
       const art = document.getElementById('catArt');
       if (art) {
@@ -1307,21 +1354,19 @@
         }
       }
 
-      /* 猫又・招き猫・ボス猫の姿と、年をとった空気 */
-      const form = formAt(cat, idx);
-      if (art) {
+      /* 特別ルートの姿と、年をとった空気 */
+      if (art && form) {
         art.classList.toggle('is-nekomata', form === 'nekomata');
         art.classList.toggle('is-maneki', form === 'maneki');
       }
-      if (form && state.shownForm !== form) {
-        state.shownForm = form;
-        toast(form === 'nekomata' ? '🔮 猫又になった！' : '🏮 招き猫になった！', 'evolve');
+      if (formChanged && form) {
+        const info = SPECIAL_INFO[form];
+        toast(info ? info.toast : '✨ すがたが変わった！', 'evolve');
       }
       if (el.stageMood) {
         el.stageMood.className = 'stage-mood' + (stage === 'senior' ? ' is-senior' : '')
           + (step.age >= 15 ? ' is-great' : '')
-          + (form === 'nekomata' ? ' is-nekomata' : '')
-          + (form === 'maneki' ? ' is-maneki' : '');
+          + (form ? ' is-form is-' + form : '');
       }
       paintScene(cat, idx, dead);
       el.stats.innerHTML = A.statsHTML(cat, idx);
@@ -1858,7 +1903,7 @@
       if (!rec || !root.CATCARD) return;
       const data = CATCARD.cardData(rec);
       if (!data) return;
-      const path = A.imgPath(data.art.type, data.art.stage);
+      const path = data.form ? A.specialPath(data.form, 'front') : A.imgPath(data.art.type, data.art.stage);
       const paint = (img) => {
         const out = CATCARD.render(rec, { createCanvas: makeCanvas, image: img });
         if (!out.dataURL) { toast('カード画像を作れなかった…', 'danger'); return; }
@@ -2009,6 +2054,8 @@
     root.CATAPP.roll = roll;
     root.CATAPP.openDex = openDex;
     root.CATAPP.state = state;
+    /* 特別ルートの見た目切り替えを確認するための入口（UIテスト用） */
+    root.CATAPP._stage = { mount: mountStage, update: updateStage };
     root.CATAPP.zoomGuard = ZOOM_GUARD;
     root.CATAPP.walkMotion = walkMotion;
     root.CATAPP.renderTraces = renderTraces;

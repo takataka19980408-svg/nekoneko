@@ -932,6 +932,19 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 /* 首輪は正面のお座り用の座標なので、横向きでは無理に乗せない（名札＝状況で伝える） */
 .cat-art.is-side .collar { opacity: 0; }
 .cat-art.is-side.is-trotting .cat-walk { animation: walkBounce .44s ease-in-out infinite; }
+
+/* ---------- 6種のコメディ・超レア猫の専用イラスト ----------
+   進化した瞬間から、正面・歩き2コマ・眠り姿がぜんぶ専用の絵に切り替わる。
+   青いしっぽ・CSSの座布団・首輪の重ねがけはしない（絵自体が主役）。 */
+.cat-art.is-special .cat-img--special { opacity: 1; }
+.cat-art.is-special .collar,
+.cat-still.is-special .collar { display: none; }
+.cat-art.is-special .cat-img--special { filter: drop-shadow(0 6px 3px rgba(80, 55, 35, .28)); }
+.cat-still.is-special .still-img { filter: drop-shadow(0 4px 3px rgba(80, 55, 35, .22)); }
+.stage-mood.is-form.is-star { opacity: .78; background: radial-gradient(60% 50% at 50% 18%, rgba(255, 170, 210, .34), rgba(120, 30, 80, .10) 100%); }
+.stage-mood.is-form.is-stationmaster { opacity: .78; background: radial-gradient(60% 50% at 50% 18%, rgba(150, 190, 240, .34), rgba(30, 50, 90, .10) 100%); }
+.stage-mood.is-form.is-buffboss { opacity: .78; background: radial-gradient(60% 50% at 50% 18%, rgba(255, 170, 90, .34), rgba(120, 50, 10, .10) 100%); }
+.stage-mood.is-form.is-spacecat { opacity: .8; background: radial-gradient(60% 50% at 50% 18%, rgba(190, 160, 255, .40), rgba(50, 30, 110, .14) 100%); }
 @keyframes walkBounce {
   0% { transform: translateY(0) rotate(-.4deg); }
   40% { transform: translateY(-3px) rotate(.5deg); }
@@ -1443,6 +1456,10 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 .form-badge.is-nekomata { background: #e4e0f8; border-color: #a99ad2; color: #54447e; }
 .form-badge.is-maneki { background: #f9e3cd; border-color: #d9a37a; color: #8d4a2a; }
 .form-badge.is-boss { background: #f9e3a8; border-color: #c99a2e; color: #6f4a08; }
+.form-badge.is-star { background: #fbe1ec; border-color: #d98aa8; color: #8a2c4c; }
+.form-badge.is-stationmaster { background: #dfe7f6; border-color: #8ea3c8; color: #2f4870; }
+.form-badge.is-buffboss { background: #ffe0c2; border-color: #d98a44; color: #7d3c0c; }
+.form-badge.is-spacecat { background: #e8e0fb; border-color: #9d8ad6; color: #4b367f; }
 .adopt-tag {
   display: inline-flex;
   align-items: center;
@@ -2057,6 +2074,10 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 }
 .finale-form.is-maneki { background: #c4603f; }
 .finale-form.is-boss { background: #b8860f; }
+.finale-form.is-star { background: #c24b75; }
+.finale-form.is-stationmaster { background: #3f5f8f; }
+.finale-form.is-buffboss { background: #b4631f; }
+.finale-form.is-spacecat { background: #5b45a0; }
 .finale-hunger {
   display: inline-block;
   margin-top: 6px;

@@ -466,9 +466,14 @@
     const step = cat.story && cat.story[i];
     const age = step ? Number(step.age) || 0 : 0;
     const adoptedNow = cat.adoptIndex != null && i >= cat.adoptIndex;
+    const form = formKeyAt(cat, i);
+    const viewOf = (key) => (key === 'nekomata' ? { icon: '🔮', label: '猫又', tone: 'nekomata' }
+      : key === 'maneki' ? { icon: '🏮', label: '招き猫（看板猫）', tone: 'maneki' }
+      : { icon: SPECIAL_META[key].icon, label: SPECIAL_META[key].name, tone: SPECIAL_META[key].tone });
     let view;
-    if (cat.nekomata && age >= 100) view = { icon: '🔮', label: '猫又', tone: 'nekomata' };
-    else if (adoptedNow && cat.maneki) view = { icon: '🏮', label: '招き猫（看板猫）', tone: 'maneki' };
+    if (form === 'nekomata') view = viewOf('nekomata');
+    else if (form === 'maneki') view = viewOf('maneki');
+    else if (form) view = viewOf(form);
     else if (adoptedNow) view = (cat.route === 'owned' || cat.route === 'purebred')
       ? { icon: '🏡', label: '家族に迎えられた', tone: 'adopt' }
       : { icon: '🏡', label: '拾われて飼い猫に', tone: 'adopt' };
@@ -477,7 +482,7 @@
     else view = STATUS_VIEW[cat.route] || { icon: '🏠', label: cat.statusLabel || '猫', tone: '' };
 
     const extra = [];
-    if (bossAt(cat, i) && !(cat.nekomata && age >= 100)) extra.push({ icon: '👑', label: 'ボス猫' });
+    if (bossAt(cat, i) && !(cat.nekomata && age >= 100) && form !== 'buffboss') extra.push({ icon: '👑', label: 'ボス猫' });
     return {
       icon: view.icon, label: view.label, text: view.icon + ' ' + view.label, tone: view.tone || '',
       extra: extra, adopted: adoptedNow && cat.route !== 'owned' && cat.route !== 'purebred'
@@ -1376,6 +1381,8 @@
     });
 
     cat.story = steps;
+    cat.formKey = 'nekomata';
+    cat.formIndex = steps.length - 2;
     applyBaseStats(cat);
     cat.caption = '100年を生きた、猫又。町内の悩み相談は、今日も満員御礼。';
     return steps;
@@ -1405,6 +1412,8 @@
 
   function decorateManeki(cat, rng) {
     cat.maneki = true;
+    cat.formKey = 'maneki';
+    cat.formIndex = cat.adoptIndex;
     const r = statRng(cat, 0x6d6b);
     const adoptStep = cat.story[cat.adoptIndex];
     if (adoptStep) {
@@ -1434,6 +1443,166 @@
     }
     cat.deathCause = 'maneki';
     cat.caption = '商店街の看板猫。右手を上げて、今日もお客さんを呼んでいる。';
+  }
+
+  /* ---------- 超レア・コメディ進化ルート（SNSスター・駅長猫・ガチムチボス・宇宙猫） ----------
+     招き猫・猫又に続く4つの特別ルート。どれも「ある日を境に、なぜかそうなった」
+     というコメディとして、進化の1ページ・専用の歩み・専用の最期・専用のキャプションを持つ。
+     進化したページ以降は、ステージも図鑑もカードも専用イラストに切り替わる。 */
+  const SPECIAL_META = {
+    star: {
+      key: 'star', icon: '📺', flag: 'star', name: 'SNSでバズったスター猫', short: 'スター猫',
+      title: 'バズる', toast: '📺 SNSでバズった！', tone: 'star', life: 3, range: [1.2, 4.5],
+      first: 'その日、なにげない寝相の1枚がSNSに投稿された。気づいたときには、100万再生を超えていた。',
+      events: [
+        '寝相の奇跡を撮った1枚が、SNSで100万再生を超えた。翌日にはグッズ化が決まり、高級カリカリ生活が始まった。',
+        'カメラを向けられると、なぜか毎回いちばん映える角度に首を傾ける。もはやプロ。',
+        'テレビの取材が来て、マイクの前で大きなあくびをした。それがまたバズった。',
+        'フォロワーが増えすぎて、専用のスタジオ（段ボールの玉座）が用意された。',
+        'ファンからのプレゼントの高級カリカリを、いちばん安いフードの上に盛って食べる。' ],
+      death: '段ボールの玉座の上で、王冠をかぶったまま静かに眠った。最後の1枚も、ちゃんとバズった。',
+      caption: '100万再生のスター猫。今日も段ボールの玉座で、ドヤ顔をキメている。'
+    },
+    stationmaster: {
+      key: 'stationmaster', icon: '🎩', flag: 'stationmaster', name: '駅長猫', short: '駅長猫',
+      title: '名誉駅長になる', toast: '🎩 駅長猫になった！', tone: 'station', life: 4, range: [0.8, 3.2],
+      first: 'さびれた無人駅に居着いて、毎日ホームを巡回していた。ある日、駅長帽をかぶせられた。',
+      events: [
+        'さびれた無人駅のホームで毎日同じ電車を見送っていたら、いつのまにか「名誉駅長」に任命されていた。',
+        '駅長帽をかぶせてもらい、赤いスカーフを巻いてもらった。似合いすぎて、誰も文句を言わない。',
+        'テレビ取材が殺到し、赤字だった路線が黒字になった。猫の経済効果はすごい。',
+        'ホームを巡回して、落とし物の傘を3本発見。駅長としての務めを果たしている。',
+        '改札の前に座って改札業務を手伝う（実際には何もしていない）が、乗客はみんな笑顔になる。' ],
+      death: 'ホームのベンチで、駅長帽をかぶったまま眠るように逝った。最終電車が見送っていった。',
+      caption: 'さびれた駅を黒字にした名誉駅長。今日もホームを、おしゃれに巡回中。'
+    },
+    buffboss: {
+      key: 'buffboss', icon: '💪', flag: 'buffboss', name: '伝説のガチムチボス猫', short: 'ガチムチボス',
+      title: 'ムキムキになる', toast: '💪 ガチムチボスになった！', tone: 'buff', life: 2, range: [2, 5],
+      first: '縄張り争いに勝ち続けた結果、前足と上半身がなぜかムキムキのボディビルダー体型になった。',
+      events: [
+        '縄張り争いに勝ち続けていたら、なぜか前足と肩が異常にムキムキになってきた。誰も理由を知らない。',
+        'カラスが道を譲り、しかも一礼して通っていく。この街の秩序は、この猫の筋肉でできている。',
+        '猫なのに、鏡の前でポーズを決める時間が増えた。筋肉は裏切らない。',
+        '小さな子猫に絡まれても、ムキムキの腕でそっと持ち上げて下ろしてやる。優しい。',
+        'ジム（縁石）で日課の腕立て伏せ。通りすがりの犬が二度見していった。' ],
+      death: 'いつもの縁石の上で、腕を組んだまま動かなくなった。最後まで貫禄十分だった。',
+      caption: 'カラスさえ敬礼して通る、伝説のガチムチボス猫。今日も筋肉で街を守っている。'
+    },
+    spacecat: {
+      key: 'spacecat', icon: '🚀', flag: 'spacecat', name: '悟りを開いた宇宙猫', short: '宇宙猫',
+      title: '宇宙に還る', toast: '🚀 宇宙猫になった！', tone: 'space', life: 0, range: [3, 12],
+      first: 'マタタビを極めすぎて、気づいたら宇宙空間に浮かんでいた。キラキラが止まらない。',
+      events: [
+        'マタタビを極めすぎたある日、体がふわりと浮いた。宇宙が見えている。',
+        '銀河を散歩して、星の匂いをかいだ。いい匂いだった。',
+        '宇宙の真理を悟った気がするが、言葉にすると「にゃーん」になる。',
+        '星屑をまたいで、月の裏側でひなたぼっこをした。',
+        '地球に戻ってきても、目がキラキラしている。もう戻れないところまで来た。' ],
+      death: '宇宙のどこかで、キラキラのまま静かに溶けていった。意味は、よくわからない。',
+      caption: '悟りを開いた宇宙猫。意味はわからないが、とてもキラキラしている。'
+    }
+  };
+
+  /* その時点の姿（特別ルート）。まだ進化していなければ null。 */
+  function formKeyAt(cat, idx) {
+    if (!cat || !cat.story || !cat.story.length) return null;
+    const i = storyIndex(cat, idx);
+    const key = cat.formKey || (cat.nekomata ? 'nekomata' : cat.maneki ? 'maneki' : null);
+    if (!key) return null;
+    if (!SPECIAL_META[key] && key !== 'maneki' && key !== 'nekomata') return null;
+    let fi = cat.formIndex;
+    if (fi == null) fi = key === 'maneki' ? cat.adoptIndex : key === 'nekomata' ? cat.story.length - 2 : null;
+    if (fi == null) return null;
+    if (key === 'nekomata') return (Number(cat.story[i].age) || 0) >= 100 ? key : null;
+    return i >= fi ? key : null;
+  }
+
+  /* どのコメディルートに入るか（1匹につき最大1つ）。
+     野生のネコ科は対象外。合計で数%程度になるよう、少しだけ出やすくしてある。 */
+  function specialRoll(cat, rng) {
+    if (!cat || cat.klass === 'wild' || cat.special || cat.formKey) return null;
+    if (cat.nekomata || cat.maneki) return null;
+    const st = baseStats(cat);
+    const age = Number(cat.ageYears) || 0;
+    const lucky = st.luck >= FATE.LUCKY;
+    const outdoors = cat.route === 'street' || cat.route === 'community' || cat.route === 'feral';
+    const staysOut = outdoors && cat.adoptIndex == null;   /* 途中で家に迎えられる予定の子は対象外 */
+    const homeward = cat.adoptIndex != null || cat.route === 'owned' || cat.route === 'purebred';
+    /* 宇宙猫：マタタビを極めた、いちばんカオスな超レア枠（子どもすぎる子には起きない） */
+    if (age >= 3 && chance(lucky ? 0.006 : 0.0035, rng)) return 'spacecat';
+    /* SNSスター：家の猫（または拾われた猫）の奇跡の1枚 */
+    if (age >= 1.5 && homeward && chance(lucky ? 0.045 : 0.03, rng)) return 'star';
+    /* 駅長猫：外猫がさびれた駅に居着く */
+    if (age >= 1 && staysOut && chance(0.03, rng)) return 'stationmaster';
+    /* ガチムチボス：縄張り争いに勝ち続けた外猫 */
+    if (age >= 2.5 && staysOut && st.energy >= 55 && chance(st.energy >= 80 ? 0.042 : 0.03, rng)) return 'buffboss';
+    return null;
+  }
+
+  function decorateSpecial(cat, rng, key) {
+    const meta = SPECIAL_META[key];
+    if (!meta) return false;
+    /* 長生きぶんの歩みを足してから、進化のページと最期を差し替える */
+    if (meta.life) extendLife(cat, meta.life);
+
+    const story = cat.story;
+    const first = Math.max(1, story.length - 1);
+    const maxAge = Number(story[first].age) || 0;
+    const from = Math.min(meta.range[0], maxAge);
+    const to = Math.min(meta.range[1], Math.max(from, maxAge));
+    /* 拾われた子は、拾われた後のページで進化する（境遇の切り替えを先に見せる） */
+    const start = cat.adoptIndex != null ? cat.adoptIndex + 1 : 1;
+    let idx = -1;
+    for (let i = start; i < story.length - 1; i++) {
+      const s = story[i];
+      if (s.kind !== 'event' || s.choice) continue;
+      const a = Number(s.age) || 0;
+      if (a >= from && a <= to) { idx = i; break; }
+    }
+    if (idx < 0) {
+      /* 近い年齢のイベントに置く（2択のページは避ける） */
+      let bestD = Infinity;
+      for (let i = start; i < story.length - 1; i++) {
+        const s = story[i];
+        if (s.kind !== 'event' || s.choice) continue;
+        const d = Math.abs((Number(s.age) || 0) - from);
+        if (d < bestD) { bestD = d; idx = i; }
+      }
+    }
+    if (idx < 0) return false;
+
+    cat.formKey = key;
+    cat[key] = true;
+
+    const step = story[idx];
+    step.kind = 'evolve';
+    step.evolve = key;
+    step.title = meta.title;
+    step.text = meta.first;
+    cat.formIndex = idx;
+    cat.formAge = step.age;
+
+    /* 進化した後の歩みを、そのルートのコメディに差し替える */
+    const after = [];
+    for (let i = idx + 1; i < story.length - 1; i++) {
+      const s = story[i];
+      if (s.kind === 'event' && !s.choice) after.push(i);
+    }
+    const pool = meta.events.slice();
+    after.slice(-3).forEach((i) => {
+      const t = pool.length ? pool.splice(Math.floor(rng() * pool.length), 1)[0] : null;
+      if (t) { story[i].text = t; story[i].title = meta.short; }
+    });
+
+    const death = story[story.length - 1];
+    if (death && death.kind === 'death') {
+      death.text = meta.death;
+      death.cause = key;
+    }
+    cat.deathCause = key;
+    cat.caption = meta.caption;
+    return true;
   }
 
   /* 空腹が長く続いた子の最期（体調を崩しやすい） */
@@ -1697,7 +1866,11 @@
     { key: 'shelter', icon: '🐈', name: '保護施設から', desc: '保護施設生まれの子が家族になった', tone: 'silver' },
     { key: 'pinch', icon: '🎯', name: '九死に一生', desc: 'ピンチを回避した', tone: 'silver' },
     { key: 'nekomata', icon: '🔮', name: '百年猫又', desc: '100歳まで生きて猫又になった', tone: 'rainbow' },
-    { key: 'maneki', icon: '🏮', name: '招き猫伝説', desc: 'お店で招き猫に進化した', tone: 'rainbow' }
+    { key: 'maneki', icon: '🏮', name: '招き猫伝説', desc: 'お店で招き猫に進化した', tone: 'rainbow' },
+    { key: 'star', icon: '📺', name: '100万再生の主役', desc: 'SNSでバズってスター猫になった', tone: 'gold' },
+    { key: 'stationmaster', icon: '🎩', name: '名誉駅長', desc: 'さびれた駅を黒字にした駅長猫になった', tone: 'gold' },
+    { key: 'buffboss', icon: '💪', name: 'ガチムチの主', desc: 'ムキムキのボス猫になった', tone: 'gold' },
+    { key: 'spacecat', icon: '🚀', name: '宇宙に還った猫', desc: '悟りを開いて宇宙猫になった', tone: 'rainbow' }
   ];
 
   function achievementDef(key) {
@@ -1744,6 +1917,10 @@
     add('pinch', !!cat.pinchAvoided || !!c.pinchAvoided);
     add('nekomata', !!cat.nekomata);
     add('maneki', !!cat.maneki);
+    add('star', !!cat.star);
+    add('stationmaster', !!cat.stationmaster);
+    add('buffboss', !!cat.buffboss);
+    add('spacecat', !!cat.spacecat);
     return got;
   }
 
@@ -1999,6 +2176,11 @@
 
     /* 超レア：🍀運の高い子が、お店に拾われて招き猫になる */
     if (manekiRoll(cat, rng)) decorateManeki(cat, rng);
+    else {
+      /* 超レア・コメディ枠：SNSスター／駅長猫／ガチムチボス／宇宙猫 */
+      const sp = specialRoll(cat, rng);
+      if (sp) decorateSpecial(cat, rng, sp);
+    }
 
     return cat.story;
   }
@@ -2251,6 +2433,7 @@
     ageLabelFine, SEASONS, SEASON_LABEL, seasonOfAge, seasonFor, seasonLabel, seasonEmoji,
     formatCount, formatProb, formatOneIn, ageText, ageLabel,
     tierOf, rareWord, dexCatalog, deathOf, buildCaption,
+    SPECIAL_META, formKeyAt,
     statusOf, rareNotes, bossAt, STATUS_VIEW, IUCN_JP,
     /* 年をとる・分岐・やり込み */
     AGE_TICKS, NEKOMATA_TICKS, ageTicks, ageScalePercent, MILESTONES, milestoneAt, milestonesPassed,

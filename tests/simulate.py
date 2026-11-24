@@ -133,6 +133,15 @@ def run(ctx):
         shelterBorn: !!c.shelterBorn,
         nekomata: !!c.nekomata,
         maneki: !!c.maneki,
+        form: c.formKey || null,
+        formIndex: c.formIndex == null ? null : c.formIndex,
+        formAge: c.formAge == null ? null : c.formAge,
+        star: !!c.star, stationmaster: !!c.stationmaster, buffboss: !!c.buffboss, spacecat: !!c.spacecat,
+        formStep: c.formKey && c.formIndex != null ? {
+          kind: story[c.formIndex].kind, evolve: story[c.formIndex].evolve || null,
+          title: story[c.formIndex].title || '', text: story[c.formIndex].text || ''
+        } : null,
+        formDeath: story[story.length - 1].text || '',
         lifeBonus: c.lifeBonus || 0,
         milestones: CATGACHA.milestonesPassed(c.ageYears).map(function(m){ return m.key; }),
         statsEveryStep: story.every(function(st){ return st.stats && st.stats.energy >= 0 && st.stats.energy <= 100 && st.stats.food >= 0 && st.stats.food <= 100 && st.stats.luck >= 0 && st.stats.luck <= 100; }),
@@ -332,6 +341,44 @@ def main():
     if diffs:
         print(f"  2コマの脚の違い: 最小 {min(diffs):.2f} / 平均 {sum(diffs)/len(diffs):.2f}")
     check(not same_pose, f"walk-1とwalk-2がほぼ同じポーズ: {same_pose[:5]}")
+
+    # ---- 6種のコメディ・超レア猫の専用イラスト（6種×4ポーズ＝24枚） ----
+    print("\n--- 特別ルートの専用イラスト ---")
+    spec_dir = ROOT / "assets" / "cats-special"
+    spec_forms = ("maneki", "nekomata", "star", "stationmaster", "buffboss", "spacecat")
+    spec_poses = ("front", "walk-1", "walk-2", "rest")
+    want_s = [f"{f}/{p}.png" for f in spec_forms for p in spec_poses]
+    have_s = sorted(str(p.relative_to(spec_dir)) for p in spec_dir.glob("*/*.png")) if spec_dir.exists() else []
+    missing_s = [f for f in want_s if f not in have_s]
+    extra_s = [f for f in have_s if f not in want_s]
+    print(f"  画像ファイル: {len(want_s) - len(missing_s)}/{len(want_s)} 枚")
+    check(not missing_s, f"専用イラストが欠けている: {missing_s[:6]}")
+    check(not extra_s, f"余分な専用イラストがある: {extra_s[:6]}")
+    bad_s = []
+    spec_covers = []
+    for f in want_s:
+        p = spec_dir / f
+        if not p.exists():
+            continue
+        ok, msg, info = check_assets.check_image(str(p), min_cover=0.06)
+        spec_covers.append(info["cover"])
+        if not ok:
+            bad_s.append(f"{f}: {msg}")
+    if spec_covers:
+        print(f"  512x512 不透明部分の割合: 最小 {min(spec_covers):.2f} / 最大 {max(spec_covers):.2f}")
+    check(not bad_s, f"専用イラストの透過・サイズ異常: {bad_s[:5]}")
+    same_s = []
+    for f in spec_forms:
+        a = _leg_mask(str(spec_dir / f / "walk-1.png"))
+        b = _leg_mask(str(spec_dir / f / "walk-2.png"))
+        if a is None or b is None:
+            same_s.append(f"{f}:空の画像")
+            continue
+        d = float((a[90:160] != b[90:160]).mean())
+        # 宇宙猫は銀河のオーラで切り出しが広く、脚の画素あたりの差が薄まるので少し緩める
+        if d < 0.08:
+            same_s.append(f"{f}:{d:.2f}")
+    check(not same_s, f"専用イラストのwalk-1とwalk-2がほぼ同じ: {same_s}")
 
     # ---- 首輪の位置（全66枚で首元にピタッと乗っているか） ----
     print("\n--- 首輪の位置 ---")
@@ -716,6 +763,78 @@ def main():
     check(all(c["adopted"] for c in maneki), "招き猫が拾われルートでない")
     check(all(c["sceneLast"] == "shop" for c in maneki), "招き猫の最期がお店の背景でない")
     check(all(c["age"] >= 7 for c in maneki), "招き猫の享年がおかしい")
+
+    # ---- 追加のコメディ・超レア4ルート（SNSスター・駅長猫・ガチムチボス・宇宙猫） ----
+    print("\n--- コメディ・超レア4ルート ---")
+    total_special = 0
+    for key, label in (("star", "SNSスター猫"), ("stationmaster", "駅長猫"),
+                       ("buffboss", "ガチムチボス"), ("spacecat", "宇宙猫")):
+        xs = [c for c in cats if c[key]]
+        total_special += len(xs)
+        print(f"  {label}: {len(xs)} ({pct(len(xs), n)})")
+        check(len(xs) > 0, f"{label}ルートに1頭も到達しない")
+        check(all(c["form"] == key for c in xs), f"{label}の formKey が揃っていない")
+        check(all(c["formIndex"] is not None and c["formStep"] and c["formStep"]["kind"] == "evolve" for c in xs),
+              f"{label}に進化のページがない")
+        check(all(c["formStep"] and c["formStep"]["evolve"] == key for c in xs), f"{label}の進化ページの種別が不正")
+        check(all(c["cause"] == key for c in xs), f"{label}の最期の原因が専用でない")
+        check(all(c["formDeath"] for c in xs), f"{label}の最期テキストがない")
+        check(all(c["htmlOk"] for c in xs), f"{label}のカードHTMLが壊れている")
+        check(all(c["adoptIndex"] is None or c["formIndex"] > c["adoptIndex"] for c in xs),
+              f"{label}が拾われる前（境遇の切り替え前）に進化している")
+    print(f"  4ルート合計: {total_special} ({pct(total_special, n)})")
+    check(0.02 <= total_special / max(1, n) <= 0.09, "コメディ枠の合計確率が数%の範囲外")
+    check(all(c["klass"] != "wild" for c in cats if c["form"] in ("star", "stationmaster", "buffboss", "spacecat")),
+          "野生のネコ科がコメディ枠になっている")
+
+    # ---- 特別ルートの表示切替（イラスト・図鑑・カード） ----
+    print("\n--- 特別ルートの表示切替 ---")
+    spec_ui = json.loads(ctx.eval("""
+      (function(){
+        var forms = ["maneki","nekomata","star","stationmaster","buffboss","spacecat"];
+        var out = {}; var got = {};
+        for (var s = 1; s <= 60000 && Object.keys(got).length < forms.length; s++) {
+          var c = CATGACHA.rollCat(s * 2654435761);
+          if (c.formKey && forms.indexOf(c.formKey) >= 0 && !got[c.formKey]) got[c.formKey] = c;
+        }
+        forms.forEach(function(k){
+          var c = got[k]; if (!c) { out[k] = null; return; }
+          var fi = c.formIndex;
+          var actor = CATART.actorHTML(c, {stage: 'adult', form: k});
+          var fin = CATAPP.buildFinaleHTML(c, [], {ach:{}});
+          var rec = CATAPP.albumEntry(c);
+          var still = CATAPP.albumStill(rec);
+          var card = CATCARD.cardData(rec) || {};
+          out[k] = {
+            formAt: CATAPP.formAt(c, fi), before: CATAPP.formAt(c, Math.max(0, fi - 1)),
+            actor: actor, still: still, artForm: rec.art && rec.art.form,
+            cardForm: card.form || '', tags: (card.tags || []).join('|'),
+            fin: fin, caption: c.caption || '', status: CATGACHA.statusOf(c, c.story.length - 1).text,
+            particles: CATART.particlesHTML(c, c.story.length - 2, true)
+          };
+        });
+        return JSON.stringify(out);
+      })()
+    """))
+    for key in ("maneki", "nekomata", "star", "stationmaster", "buffboss", "spacecat"):
+        d = spec_ui.get(key)
+        check(d is not None, f"{key} のサンプル猫が見つからない")
+        if not d:
+            continue
+        print(f"  {key}: formAt={d['formAt']} / status={d['status']}")
+        check(d["formAt"] == key, f"{key}: 進化後の formAt が不正")
+        check(d["before"] != key, f"{key}: 進化前から姿が変わっている")
+        check(f"assets/cats-special/{key}/front.png" in d["actor"], f"{key}: ステージ正面が専用イラストでない")
+        check(f"assets/cats-special/{key}/walk-1.png" in d["actor"], f"{key}: 歩き姿が専用イラストでない")
+        check(f"assets/cats-special/{key}/rest.png" in d["actor"], f"{key}: 眠り姿が専用イラストでない")
+        check("is-special" in d["actor"], f"{key}: 専用イラストの class がない")
+        check("collarBadge" not in d["actor"], f"{key}: 専用イラストに首輪を重ねている")
+        check("nekomata-tail" not in d["actor"], f"{key}: 専用イラストに青いしっぽを重ねている")
+        check(f"assets/cats-special/{key}/front.png" in d["still"], f"{key}: 図鑑サムネが専用イラストでない")
+        check(d["artForm"] == key, f"{key}: 過去の猫生に form が残っていない")
+        check(d["cardForm"] == key, f"{key}: 猫生カードの form が不正")
+        check("undefined" not in d["fin"] and "NaN" not in d["fin"], f"{key}: フィナーレに undefined/NaN")
+        check("undefined" not in d["still"] and "NaN" not in d["still"], f"{key}: 図鑑サムネが壊れている")
 
     # ---- 実績・称号 ----
     print("\n--- 実績・称号 ---")
@@ -1218,7 +1337,8 @@ def main():
         /* 季節の舞うものが、どの場面でも季節に切り替わる */
         for (var j = 0; j < 220; j++) {
           var cc = CATGACHA.rollCat(9000 + j * 17);
-          if (cc.nekomata || cc.maneki) continue;
+          /* 特別ルートの猫は専用の舞うもの（銀河・鬼火など）を出すので、季節の検査から外す */
+          if (cc.formKey) continue;
           for (var k = 0; k < cc.story.length; k++) {
             var st = cc.story[k];
             if (st.kind === 'death') continue;

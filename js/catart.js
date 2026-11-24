@@ -13,6 +13,18 @@
   const WALK_DIR = 'assets/cats-walk/';
   const WALK_V = '?v=20261125c';
   const WALK_POSES = ['walk-1', 'walk-2', 'rest'];
+  /* 6種のコメディ・超レア猫の専用イラスト（各4ポーズ） */
+  const SPECIAL_DIR = 'assets/cats-special/';
+  const SPECIAL_V = '?v=20261124a';
+  const SPECIAL_POSES = ['front', 'walk-1', 'walk-2', 'rest'];
+  const SPECIAL = {
+    nekomata: { icon: '🔮', name: '猫又', short: '猫又', toast: '🔮 猫又になった！', tone: 'nekomata' },
+    maneki: { icon: '🏮', name: '招き猫', short: '招き猫', toast: '🏮 招き猫になった！', tone: 'maneki' },
+    star: { icon: '📺', name: 'SNSでバズったスター猫', short: 'スター猫', toast: '📺 SNSでバズった！', tone: 'star' },
+    stationmaster: { icon: '🎩', name: '駅長猫', short: '駅長猫', toast: '🎩 駅長猫になった！', tone: 'station' },
+    buffboss: { icon: '💪', name: 'ガチムチボス猫', short: 'ガチムチボス', toast: '💪 ガチムチボスになった！', tone: 'buff' },
+    spacecat: { icon: '🚀', name: '宇宙猫', short: '宇宙猫', toast: '🚀 宇宙猫になった！', tone: 'space' }
+  };
   const TYPES = [
     'tabby', 'orange', 'black', 'white', 'calico', 'tuxedo', 'gray',
     'siamese', 'fluffy', 'lion', 'tiger', 'leopard', 'wildcat', 'scottish',
@@ -166,6 +178,23 @@
     return walkPath(typeFor(cat), pose);
   }
 
+  /* 特別ルートの専用イラスト */
+  function specialPath(form, pose) {
+    const f = SPECIAL[form] ? form : 'maneki';
+    const p = SPECIAL_POSES.indexOf(pose) >= 0 ? pose : 'front';
+    return SPECIAL_DIR + f + '/' + p + '.png' + SPECIAL_V;
+  }
+
+  /* その時点の姿。エンジン側が持つ進化の記録（formKey/formIndex）に従う。 */
+  function formAt(cat, idx) {
+    const E = root.CATGACHA;
+    if (E && E.formKeyAt) return E.formKeyAt(cat, idx);
+    if (!cat || !cat.story || !cat.story[idx]) return null;
+    if (cat.nekomata && cat.story[idx].age >= 100) return 'nekomata';
+    if (cat.maneki && cat.adoptIndex != null && idx >= cat.adoptIndex) return 'maneki';
+    return null;
+  }
+
   /* ---------- 場面 ---------- */
   const SCENE_CLASS = {
     room_warm: 'home', room_modern: 'home', temple: 'temple', bazaar: 'village',
@@ -204,7 +233,9 @@
     forest: ['🍂', '🍃'], desert: ['✨', '🌙'], mountain: ['❄️', '✨'],
     island: ['💧', '🌈'], coast: ['💧', '✨'], zoo: ['✨', '🍃'],
     temple: ['🌸', '🍂'], finale: ['🌈', '✨', '⭐'],
-    nekomata: ['🔮', '🌙', '✨'], maneki: ['💰', '🏮', '✨']
+    nekomata: ['🔮', '🌙', '✨'], maneki: ['💰', '🏮', '✨'],
+    star: ['📺', '⭐', '✨'], stationmaster: ['🎫', '🚃', '✨'],
+    buffboss: ['💪', '🔥', '✨'], spacecat: ['🚀', '🌌', '⭐', '✨']
   };
 
   /* 季節のパーティクル（家・路地・集落など、季節がめぐる場所） */
@@ -216,13 +247,16 @@
   };
   const SEASON_SCENES = { home: 1, shop: 1, alley: 1, village: 1, temple: 1 };
 
+  /* その姿だけの舞うもの（妖しい猫だけ。スター猫・駅長猫・ガチムチボスは季節の風情を残す） */
+  const FORM_PARTICLES = { nekomata: 1, maneki: 1, spacecat: 1 };
+
   function particlesFor(cat, idx, dead) {
+    const form = formAt(cat, idx);
     if (dead) {
-      if (cat && cat.nekomata) return PARTICLES.nekomata;
-      if (cat && cat.maneki) return PARTICLES.maneki;
+      if (form && PARTICLES[form]) return PARTICLES[form];
       return PARTICLES.finale;
     }
-    if (cat && cat.nekomata && cat.story && idx != null && cat.story[idx] && cat.story[idx].age >= 100) return PARTICLES.nekomata;
+    if (form && FORM_PARTICLES[form] && PARTICLES[form]) return PARTICLES[form];
     const key = sceneKeyFor(cat, idx);
     const step = cat && cat.story && idx != null ? cat.story[idx] : null;
     const season = step && step.season;
@@ -465,9 +499,26 @@
   function actorHTML(cat, opts) {
     opts = opts || {};
     const stage = opts.stage || 'kitten';
-    const kittenOn = stage === 'kitten';
+    const form = opts.form && SPECIAL[opts.form] ? opts.form : null;
+    const kittenOn = stage === 'kitten' && !form;
     const t = typeFor(cat);
     const alt = (cat && (cat.speciesName || cat.name)) || '猫';
+    if (form) {
+      /* 特別ルート：専用イラストが主役。首輪・座布団・青いしっぽの重ねがけはしない */
+      return `<div class="cat-art is-adult is-special" id="catArt" data-type="${t}" data-form="${form}" style="${collarVars(t, 'adult')}">
+      <div class="cat-scale">
+        <img class="cat-img cat-img--adult cat-img--special is-on" id="catImgAdult" src="${specialPath(form, 'front')}" alt="${escapeAttr(alt)}（${SPECIAL[form].name}）" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+        <div class="cat-walk" id="catWalk" aria-hidden="true">
+          <img class="cat-walk-img is-on" id="catWalk1" src="${specialPath(form, 'walk-1')}" alt="" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+          <img class="cat-walk-img" id="catWalk2" src="${specialPath(form, 'walk-2')}" alt="" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+        </div>
+        <img class="cat-rest-img" id="catRest" src="${specialPath(form, 'rest')}" alt="${escapeAttr(alt)}が静かに眠っている姿" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+        <span class="cat-breath" aria-hidden="true"></span>
+        <span class="growth-spark" aria-hidden="true">✨</span>
+      </div>
+      <div class="bubble-layer" id="bubbleLayer" aria-hidden="true"></div>
+    </div>`;
+    }
     return `<div class="cat-art ${kittenOn ? 'is-kitten' : 'is-adult'}" id="catArt" data-type="${t}" style="${collarVars(t, stage)}">
       <div class="cat-scale">
         <span class="nekomata-tail" aria-hidden="true"><svg viewBox="0 0 90 150">
@@ -500,6 +551,11 @@
     opts = opts || {};
     const t = (typeof type === 'string' && type) ? type : 'tabby';
     const stage = opts.stage === 'kitten' ? 'kitten' : 'adult';
+    if (opts.form && SPECIAL[opts.form]) {
+      return `<div class="cat-still is-adult is-special" data-type="${escapeAttr(t)}" data-form="${opts.form}">
+        <img class="still-img" src="${specialPath(opts.form, 'front')}" alt="${escapeAttr(opts.alt || SPECIAL[opts.form].name)}" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+      </div>`;
+    }
     const cls = ['cat-still', stage === 'kitten' ? 'is-kitten' : 'is-adult'];
     if (opts.collar) cls.push('is-collar');
     if (opts.nekomata) cls.push('is-nekomata');
@@ -535,6 +591,7 @@
 
   const api = {
     ASSET_DIR, ASSET_V, WALK_DIR, WALK_V, WALK_POSES, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
+    SPECIAL_DIR, SPECIAL_V, SPECIAL, SPECIAL_POSES, specialPath, formAt,
     typeFor, shapeType, assetPath, imgPath, assetStage, patternType, colorFamily,
     walkPath, walkPathFor,
     sceneKeyFor, sceneLabel, sceneClassOf, particlesFor, particlesHTML,

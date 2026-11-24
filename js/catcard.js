@@ -18,7 +18,13 @@
   const CAUSE_JP = {
     early: '早すぎる別れ', illness: '病気', accident: '事故', natural: '大往生',
     starve: '飢え', fight: 'ケンカ', human: '人の手', pinch: '不慮の事故',
-    nekomata: '猫又', maneki: '看板猫'
+    nekomata: '猫又', maneki: '看板猫',
+    star: 'スター猫', stationmaster: '駅長猫', buffboss: 'ガチムチボス', spacecat: '宇宙猫'
+  };
+  /* 6種の特別ルート（専用イラストに切り替える） */
+  const FORM_TAGS = {
+    nekomata: ['🔮', '猫又'], maneki: ['🏮', '招き猫'], star: ['📺', 'スター猫'],
+    stationmaster: ['🎩', '駅長猫'], buffboss: ['💪', 'ガチムチボス'], spacecat: ['🚀', '宇宙猫']
   };
   const STATUS_ICON = [
     ['野生のネコ科', '🐆'], ['動物園', '🎪'], ['野生化', '🌿'], ['地域猫', '🏘'],
@@ -134,6 +140,9 @@
     const coat = rec.breed || rec.pattern || '';
     const tags = [];
     /* 育った気質は、いちばん先に見せたい */
+    const form = art.form || rec.form || (rec.nekomata ? 'nekomata'
+      : rec.maneki ? 'maneki' : rec.spacecat ? 'spacecat'
+      : rec.star ? 'star' : rec.stationmaster ? 'stationmaster' : rec.buffboss ? 'buffboss' : '');
     let persona = '';
     if (rec.persona && rec.persona.stage) persona = rec.persona.label;
     else if (E.personalityAt && Array.isArray(rec.story) && rec.story.length) {
@@ -152,9 +161,8 @@
       tags.push((ic ? ic + ' ' : '') + rec.statusLabel);
     }
     if (rec.adopted) tags.push(rec.maneki ? '🏮 お店の子' : '🏡 家族の子');
-    if (rec.bossCat) tags.push('👑 ボス猫');
-    if (rec.nekomata) tags.push('🔮 猫又');
-    if (rec.maneki) tags.push('🏮 招き猫');
+    if (rec.bossCat && form !== 'buffboss') tags.push('👑 ボス猫');
+    if (form && FORM_TAGS[form]) tags.push(FORM_TAGS[form].join(' '));
     if (rec.mutations && rec.mutations.length) {
       rec.mutations.slice(0, 2).forEach(m => { if (m && m.name) tags.push('✦ ' + m.name); });
     }
@@ -177,9 +185,10 @@
       caption: rec.caption || '',
       adopted: !!rec.adopted,
       boss: !!rec.bossCat,
-      nekomata: !!rec.nekomata,
-      maneki: !!rec.maneki,
-      collar: !!(art.collar || rec.adopted),
+      nekomata: form === 'nekomata' || !!rec.nekomata,
+      maneki: form === 'maneki' || !!rec.maneki,
+      form: form && FORM_TAGS[form] ? form : '',
+      collar: !form && !!(art.collar || rec.adopted),
       senior: !!(art.senior || rec.finalStage === 'senior' || age >= 10),
       tags: tags,
       persona: persona,
@@ -194,8 +203,10 @@
     const A = root.CATART || {};
     const type = data.art.type, stage = data.art.stage;
 
+    /* 特別ルート：専用イラストをそのまま描く（重ねがけはしない） */
+
     /* 猫又の2本目のしっぽ（体の後ろに描く） */
-    if (data.nekomata) {
+    if (data.nekomata && !data.form) {
       ctx.save();
       ctx.lineCap = 'round';
       ctx.strokeStyle = '#7FB4FF';
@@ -215,7 +226,7 @@
     }
 
     /* 招き猫の赤い座布団と小判 */
-    if (data.maneki) {
+    if (data.maneki && !data.form) {
       ctx.save();
       ctx.beginPath();
       ellipsePath(ctx, cx, top + size * 0.965, size * 0.40, size * 0.075, 0, 0, Math.PI * 2);
@@ -267,7 +278,7 @@
     }
 
     /* 鈴付きの首輪（js/catart.js の個体別座標を使う） */
-    if (data.collar) {
+    if (data.collar && !data.form) {
       const c = (A.collarFor ? A.collarFor(type, stage) : { x: 45, y: 50, w: 38, r: 0 });
       const ccx = x + size * (c.x / 100);
       const ccy = top + size * (c.y / 100);

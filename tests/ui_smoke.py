@@ -1332,6 +1332,81 @@ def main():
     else:
         print("[note] このシード範囲では招き猫が出なかった（simulate.py で件数確認）")
 
+    # --- 6種のコメディ・超レア猫：進化した瞬間のDOM切替（ステージ・図鑑・カード） ---
+    print("\n--- 6種の特別ルート：DOM切替 ---")
+    special = json.loads(ctx.eval("""
+      (function(){
+        var forms = ['maneki','nekomata','star','stationmaster','buffboss','spacecat'];
+        var got = {}, out = {};
+        for (var s = 1; s < 120000 && Object.keys(got).length < forms.length; s++) {
+          var c = CATGACHA.rollCat(s * 40503);
+          if (c.formKey && forms.indexOf(c.formKey) >= 0 && !got[c.formKey]) got[c.formKey] = c;
+        }
+        forms.forEach(function(k){
+          var c = got[k];
+          if (!c) { out[k] = null; return; }
+          var fi = c.formIndex, last = c.story.length - 1;
+          CATAPP.state.current = c;
+          CATAPP.state.started = true;
+          CATAPP._stage.mount(c);
+          CATAPP._stage.update(c, Math.max(0, fi - 1));
+          var before = document.getElementById('catActor').innerHTML;
+          CATAPP._stage.update(c, fi);
+          var after = document.getElementById('catActor').innerHTML;
+          CATAPP._stage.update(c, last);
+          var rest = document.getElementById('catActor').innerHTML;
+          var dex = CATAPP.emptyDex();
+          CATAPP.record(dex, c);
+          CATAPP.state.dex = dex;
+          CATAPP.state.tab = 'albums';
+          CATAPP.openDex();
+          var album = document.getElementById('dexBody').innerHTML;
+          CATAPP.state.tab = 'achievements';
+          CATAPP.openDex();
+          var record = document.getElementById('dexBody').innerHTML;
+          var rec = CATAPP.albumEntry(c);
+          out[k] = {
+            form: c.formKey, formIndex: fi, age: c.ageYears, len: c.story.length,
+            before: before, after: after, rest: rest, album: album, record: record,
+            finale: CATAPP.buildFinaleHTML(c, [], {ach:{}}),
+            formAt: CATAPP.formAt(c, fi), beforeForm: CATAPP.formAt(c, Math.max(0, fi - 1)),
+            cardForm: (CATCARD.cardData(rec) || {}).form || ''
+          };
+        });
+        return JSON.stringify(out);
+      })()
+    """))
+    for key in ("maneki", "nekomata", "star", "stationmaster", "buffboss", "spacecat"):
+        s = special.get(key)
+        if not s:
+            print(f"[NG] {key} の猫がシード範囲で見つからない（DOM検証不能）")
+            failures.append(f"{key}:サンプルなし")
+            continue
+        ok = True
+        if s["formAt"] != key or s["beforeForm"] == key:
+            print(f"[NG] {key}: 進化前後の formAt が不正", s["formAt"], s["beforeForm"]); ok = False
+        if "assets/cats-special/" in s["before"]:
+            print(f"[NG] {key}: 進化前から専用イラストになっている"); ok = False
+        if ("is-special" not in s["after"] or f"assets/cats-special/{key}/front.png" not in s["after"]
+                or f'data-form="{key}"' not in s["after"]):
+            print(f"[NG] {key}: 進化した瞬間にステージが専用イラストに切り替わらない"); ok = False
+        if f"assets/cats-special/{key}/walk-1.png" not in s["after"] or f"assets/cats-special/{key}/walk-2.png" not in s["after"]:
+            print(f"[NG] {key}: 歩き2コマが専用イラストでない"); ok = False
+        if "collarBadge" in s["after"] or "nekomata-tail" in s["after"]:
+            print(f"[NG] {key}: 専用イラストに従来の重ねがけが残っている"); ok = False
+        if f"assets/cats-special/{key}/rest.png" not in s["rest"]:
+            print(f"[NG] {key}: 最期の眠り姿が専用イラストでない"); ok = False
+        if f"assets/cats-special/{key}/front.png" not in s["album"] or "is-special" not in s["album"]:
+            print(f"[NG] {key}: 図鑑の過去の猫生が専用イラストでない"); ok = False
+        if "undefined" in s["album"] or "NaN" in s["album"] or "undefined" in s["record"]:
+            print(f"[NG] {key}: 図鑑に undefined/NaN"); ok = False
+        if s["cardForm"] != key:
+            print(f"[NG] {key}: 猫生カードの form が不正", s["cardForm"]); ok = False
+        if "undefined" in s["finale"] or "NaN" in s["finale"]:
+            print(f"[NG] {key}: フィナーレに undefined/NaN"); ok = False
+        if ok:
+            print(f"  {key}: OK（{s['formIndex']}歩目で進化 / 享年 {s['age']}歳 / {s['len']}歩）")
+
     # --- 実績の評価関数が壊れていないか ---
     achcheck = json.loads(ctx.eval("""
       (function(){
