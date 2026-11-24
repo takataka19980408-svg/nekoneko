@@ -133,6 +133,19 @@
       : rec.route === 'purebred' ? '純血種' : '雑種');
     const coat = rec.breed || rec.pattern || '';
     const tags = [];
+    /* 育った気質は、いちばん先に見せたい */
+    let persona = '';
+    if (rec.persona && rec.persona.stage) persona = rec.persona.label;
+    else if (E.personalityAt && Array.isArray(rec.story) && rec.story.length) {
+      const p = E.personalityAt(rec, rec.story.length - 1);
+      if (p && p.stage) persona = p.label;
+    }
+    if (persona) tags.push('🌱 ' + persona);
+    let traces = Array.isArray(rec.traces) ? rec.traces.filter(t => t && t.label) : [];
+    if (!traces.length && E.tracesAt && Array.isArray(rec.story) && rec.story.length) {
+      traces = E.tracesAt(rec, rec.story.length - 1);
+    }
+    traces = traces.slice(0, 3);
     if (rec.statusLabel) {
       let ic = '';
       STATUS_ICON.forEach(p => { if (!ic && rec.statusLabel.indexOf(p[0]) >= 0) ic = p[1]; });
@@ -169,6 +182,8 @@
       collar: !!(art.collar || rec.adopted),
       senior: !!(art.senior || rec.finalStage === 'senior' || age >= 10),
       tags: tags,
+      persona: persona,
+      traces: traces,
       art: { type: type, stage: stage }
     };
   }
@@ -387,12 +402,26 @@
     /* 代表の一言 */
     if (data.caption) {
       ctx.font = '700 30px ' + FONT;
-      const lines = wrap(ctx, data.caption, 840, 3);
+      const lines = wrap(ctx, data.caption, 840, 2);
       const cut = lines.join('').length < String(data.caption).length;
-      const startY = lines.length > 2 ? 1064 : 1092;
+      const startY = 1050;
       lines.forEach((ln, i) => {
         const body = (i === 0 ? '「' : '') + ln + (i === lines.length - 1 ? (cut ? '…」' : '」') : '');
         e(ctx, body, 540, startY + i * 40, 29, INK2, { align: 'center', weight: '700' });
+      });
+    }
+
+    /* 残した思い出の痕跡（3つまで。はみ出すときは減らす） */
+    if (data.traces && data.traces.length) {
+      const list = data.traces.slice(0, 3);
+      const size = 20;
+      const widthOf = (t) => { ctx.font = '800 ' + size + 'px ' + FONT; return ctx.measureText(t.icon + ' ' + t.label).width + size * 1.5; };
+      while (list.length && list.reduce((a, t) => a + widthOf(t) + 8, -8) > 900) list.pop();
+      const totalW = list.reduce((a, t) => a + widthOf(t) + 8, -8);
+      let tx = 540 - totalW / 2;
+      list.forEach(t => {
+        const p = pill(ctx, t.icon + ' ' + t.label, tx, 1128, size, '#fff8ee', '#a1703a');
+        tx += p.w + 8;
       });
     }
 

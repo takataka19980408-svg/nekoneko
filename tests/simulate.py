@@ -1080,6 +1080,115 @@ def main():
     check(card["sampleImages"] > 0, "カードに猫の画像が描かれていない")
     check(card["noAge"] == 0 and card["noOdds"] == 0, "カードに享年/珍しさの欠けた猫がいる")
 
+    # ---- 気質（性格）と思い出の痕跡 ----
+    print("\n--- 気質（性格）と思い出の痕跡 ---")
+    grow = json.loads(ctx.eval(r"""
+      (function(){
+        var out = {
+          n: 0, stage0AtBirth: 0, stageDist: {}, words: {}, badLabel: [],
+          traceBad: [], traceOver: 0, dupTrace: 0, determinism: 0, birthTrace: 0,
+          stageChanged: 0, longStage0: 0, bossCats: 0, bossNoTrace: 0, bossNoWord: 0,
+          finaleOk: 0, finaleBad: [], albumOk: 0, albumBad: [], cardBad: [],
+          maxTraces: 0, minTraces: 99, traceKeys: {}, seasonMissing: {}
+        };
+        for (var i = 0; i < 600; i++) {
+          var c = CATGACHA.rollCat(5000 + i * 131);
+          c.story.forEach(function(s, idx){ if (s.choice && s.chosen == null) CATGACHA.applyChoice(c, idx, (i + idx) % 2); });
+          out.n++;
+          var p0 = CATGACHA.personalityAt(c, 0);
+          if (p0.stage === 0 && p0.label === 'これから育つ') out.stage0AtBirth++;
+          else out.badLabel.push('birth:' + p0.label);
+          var p = CATGACHA.personalityAt(c, c.story.length - 1);
+          out.stageDist[p.stage] = (out.stageDist[p.stage] || 0) + 1;
+          if (p.stage) {
+            out.words[p.noun] = (out.words[p.noun] || 0) + 1;
+            var hit = CATGACHA.TRAIT_KEYS.some(function(k){ return p.label.indexOf(CATGACHA.TRAITS[k].noun) >= 0; });
+            if (!hit) out.badLabel.push(p.label);
+          }
+          if (p.stage && p0.label !== p.label) out.stageChanged++;
+          if (p.stage === 0 && c.ageYears >= 4) out.longStage0++;
+          /* 痕跡：決定的・重複なし・8個まで・生まれた日には無い */
+          var t1 = CATGACHA.tracesAt(c, c.story.length - 1);
+          var t2 = CATGACHA.tracesAt(c, c.story.length - 1);
+          if (JSON.stringify(t1) !== JSON.stringify(t2)) out.determinism++;
+          if (CATGACHA.tracesAt(c, 0).length) out.birthTrace++;
+          var seen = {};
+          t1.forEach(function(t){
+            if (!t.icon || !t.label || /undefined|NaN/.test(t.label)) out.traceBad.push(t.key);
+            if (seen[t.key]) out.dupTrace++;
+            seen[t.key] = 1;
+            out.traceKeys[t.key] = (out.traceKeys[t.key] || 0) + 1;
+          });
+          out.maxTraces = Math.max(out.maxTraces, t1.length);
+          out.minTraces = Math.min(out.minTraces, t1.length);
+          if (t1.length > CATGACHA.TRACE_MAX) out.traceOver++;
+          if (c.bossCat) {
+            out.bossCats++;
+            var crown = t1.some(function(t){ return t.key === 'boss' || t.key === 'territory'; });
+            if (!crown) out.bossNoTrace++;
+            if (!p.boss) out.bossNoWord++;
+          }
+          /* フィナーレ・記録・カードへの反映 */
+          var fin = CATAPP.buildFinaleHTML(c, [], {ach: {}});
+          if (fin.indexOf('気質') >= 0 && fin.indexOf('undefined') < 0 && fin.indexOf('NaN') < 0) out.finaleOk++;
+          else out.finaleBad.push(c.name);
+          var rec = CATAPP.albumEntry(c);
+          var wantLabel = p.stage ? p.label : (Number(c.ageYears) >= 2 ? 'どこにも寄らない自由な猫' : 'これから育つ');
+          if (rec.persona && rec.persona.label === wantLabel
+              && Array.isArray(rec.traces) && rec.traces.length === t1.length) out.albumOk++;
+          else out.albumBad.push(c.name);
+          if (i < 20) {
+            var cd = CATCARD.cardData(rec);
+            if (!cd || /undefined|NaN/.test(JSON.stringify({p: cd.persona, t: cd.traces}))) out.cardBad.push(c.name);
+          }
+        }
+        /* 季節の舞うものが、どの場面でも季節に切り替わる */
+        for (var j = 0; j < 220; j++) {
+          var cc = CATGACHA.rollCat(9000 + j * 17);
+          if (cc.nekomata || cc.maneki) continue;
+          for (var k = 0; k < cc.story.length; k++) {
+            var st = cc.story[k];
+            if (st.kind === 'death') continue;
+            var want = {spring: '🌸', summer: '☀️', autumn: '🍁', winter: '❄️'}[st.season];
+            if (!want) continue;
+            if (CATART.particlesHTML(cc, k, false).indexOf(want) < 0) {
+              out.seasonMissing[st.season] = (out.seasonMissing[st.season] || 0) + 1;
+            }
+          }
+        }
+        out.traceKeysList = Object.keys(out.traceKeys);
+        out.traits = CATGACHA.TRAIT_KEYS.length;
+        return JSON.stringify(out);
+      })()
+    """))
+    n = grow["n"]
+    print(f"  誕生直後「これから育つ」: {grow['stage0AtBirth']}/{n}")
+    print(f"  育った気質の分布: {grow['stageDist']} / 名前: {grow['words']}")
+    print(f"  歩くうちに呼び名が変わった: {grow['stageChanged']}/{n} / 長寿なのに未成熟: {grow['longStage0']}")
+    print(f"  痕跡: ひと猫生 {grow['minTraces']}〜{grow['maxTraces']}個 / 種類 {len(grow['traceKeysList'])}種")
+    print(f"  ボス猫 {grow['bossCats']}匹（痕跡なし {grow['bossNoTrace']} / 気質なし {grow['bossNoWord']}）")
+    print(f"  フィナーレ反映 {grow['finaleOk']}/{n} ・ 記録反映 {grow['albumOk']}/{n}")
+    print(f"  季節の舞うものの欠け: {grow['seasonMissing'] or 'なし'}")
+    check(grow["stage0AtBirth"] == n, "誕生直後が「これから育つ」になっていない猫がいる")
+    check(not grow["badLabel"], f"気質の呼び名が不正: {grow['badLabel'][:3]}")
+    check(grow["stageChanged"] >= n * 0.75, "歩いても気質の呼び名が育たない猫が多すぎる")
+    check(sum(v for k, v in grow["stageDist"].items() if k != "0") >= n * 0.8, "気質が育たない猫が多すぎる")
+    check(len(grow["words"]) >= 4, f"気質の種類が偏りすぎ: {grow['words']}")
+    check(grow["longStage0"] <= n * 0.02, "長生きなのに気質が未成熟の猫が多すぎる")
+    check(not grow["traceBad"], f"痕跡のラベルが壊れている: {grow['traceBad'][:3]}")
+    check(grow["traceOver"] == 0, "痕跡が8個を超えている")
+    check(grow["dupTrace"] == 0, "同じ痕跡が重複している")
+    check(grow["determinism"] == 0, "同じ猫で痕跡が毎回変わる（決定的でない）")
+    check(grow["birthTrace"] == 0, "生まれた日に痕跡が付いている")
+    check(grow["maxTraces"] >= 6, "痕跡がほとんど増えない")
+    check(len(grow["traceKeysList"]) >= 18, f"痕跡の種類が少なすぎる: {grow['traceKeysList']}")
+    check(grow["bossCats"] > 0, "ボス猫が1匹も出ない")
+    check(grow["bossNoTrace"] == 0 and grow["bossNoWord"] == 0, "ボス猫に痕跡/気質が付かない")
+    check(grow["finaleOk"] == n, f"フィナーレに気質が出ない: {grow['finaleBad'][:3]}")
+    check(grow["albumOk"] == n, f"過去の猫生に気質/痕跡が残らない: {grow['albumBad'][:3]}")
+    check(not grow["cardBad"], f"カードデータに気質/痕跡の不備: {grow['cardBad'][:3]}")
+    check(not grow["seasonMissing"], f"季節の舞うものが切り替わらない: {grow['seasonMissing']}")
+
     # ---- 音は鳴らさない（ショボい電子音より無音のほうがクオリティが保てる） ----
     print("\n--- 音を出さないこと ---")
     snd = json.loads(ctx.eval(r"""

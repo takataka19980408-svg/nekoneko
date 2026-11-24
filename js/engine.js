@@ -608,6 +608,252 @@
     return SEASON_EMOJI[season] || '';
   }
 
+  /* ============================================================
+     気質（性格）— 2択と出来事で、少しずつ育つ5つの軸
+     甘えん坊／一匹狼／食いしん坊／冒険家／のんびり屋
+     ・生まれた瞬間は「これから育つ」（まだ無垢な子猫）
+     ・歩むにつれて、いちばん伸びた気質が名札に出る
+     ・さらにもう1つ伸びると「食いしん坊な甘えん坊」のように重なる
+     ============================================================ */
+  const TRAITS = {
+    amae: { key: 'amae', icon: '🐾', noun: '甘えん坊', mod: '甘えん坊な', desc: '人や仲間のそばにいたがる' },
+    solo: { key: 'solo', icon: '🌙', noun: '一匹狼', mod: 'ひとりが好きな', desc: 'ひとりの時間を大事にする' },
+    foodie: { key: 'foodie', icon: '🍚', noun: '食いしん坊', mod: '食いしん坊な', desc: 'ごはんのことばかり考えている' },
+    brave: { key: 'brave', icon: '⚡', noun: '冒険家', mod: 'わんぱくな', desc: '新しい場所へ飛び込んでいく' },
+    easy: { key: 'easy', icon: '☕', noun: 'のんびり屋', mod: 'のんびりした', desc: 'あわてず、自分のペースで' }
+  };
+  const TRAIT_KEYS = ['amae', 'solo', 'foodie', 'brave', 'easy'];
+  const TRAIT_STAGE1 = 8;    /* これ以上で「ひとつの気質」が芽吹く */
+  const TRAIT_DUO = 7;       /* 2つ目がこれ以上で、重ねた呼び名になる */
+  const TRAIT_RIPE = 16;     /* ここまで育つと「すっかり〜」 */
+  const TRAIT_HINT_CAP = 3;  /* 出来事から拾う分は控えめに（選んだ2択が主役） */
+
+  function addTraitScores(dst, add, mul) {
+    if (!add) return;
+    const m = mul == null ? 1 : mul;
+    Object.keys(add).forEach(k => {
+      if (!TRAITS[k]) return;
+      dst[k] = (dst[k] || 0) + (Number(add[k]) || 0) * m;
+    });
+  }
+
+  /* 生まれつきの下地。どんな子も、まだ「これから育つ」範囲に収める */
+  function traitBase(cat) {
+    const s = {};
+    const r = statRng(cat, 0x7a31);
+    TRAIT_KEYS.forEach(k => { s[k] = 2 + Math.floor(r() * 3); });   /* 2〜4 */
+    const route = cat && cat.route;
+    if (cat && cat.klass === 'wild') { s.solo += 2; s.brave += 2; s.amae -= 1; }
+    else if (route === 'owned' || route === 'purebred') { s.amae += 2; }
+    else if (route === 'community') { s.easy += 1; s.amae += 1; }
+    else if (route === 'street') { s.brave += 2; s.solo += 1; }
+    else if (route === 'feral') { s.solo += 2; s.brave += 1; }
+    else if (route === 'zoo') { s.foodie += 2; s.easy += 1; }
+    TRAIT_KEYS.forEach(k => { s[k] = Math.max(0, s[k]); });
+    return s;
+  }
+
+  /* 2択の選択 → 気質の伸び（選択肢ごとに手で決めた重み） */
+  const CHOICE_FLAVOR = {
+    box: [{ trait: { easy: 3, amae: 1 }, trace: 'box' }, { trait: { easy: 2, brave: 1 }, trace: 'box' }],
+    butterfly: [{ trait: { easy: 3 }, trace: 'windowsill' }, { trait: { brave: 3, foodie: 1 }, trace: 'hunt' }],
+    family: [{ trait: { amae: 4 }, trace: 'family' }, { trait: { amae: 3, easy: 1 }, trace: 'family' }],
+    fish: [{ trait: { foodie: 4 }, trace: 'fish' }, { trait: { foodie: 2, easy: 2 }, trace: 'fish' }],
+    crevice: [{ trait: { brave: 2, foodie: 2 }, trace: 'hunt' }, { trait: { easy: 3 }, trace: 'peace' }],
+    stranger: [{ trait: { brave: 2, solo: 2 }, trace: 'pride' }, { trait: { easy: 2, amae: 1 }, trace: 'peace' }],
+    rain: [{ trait: { brave: 2, easy: 1 }, trace: 'rain' }, { trait: { easy: 3 }, trace: 'rain' }],
+    midnight: [{ trait: { brave: 3, solo: 1 }, trace: 'moon' }, { trait: { easy: 3 }, trace: 'sunspot' }],
+    hand: [{ trait: { amae: 4 }, trace: 'home' }, { trait: { solo: 4, brave: 1 }, trace: 'freedom' }],
+    headlight: [{ trait: { brave: 4 }, trace: 'road' }, { trait: { easy: 3 }, trace: 'road' }],
+    winter: [{ trait: { easy: 2, amae: 2 }, trace: 'warm' }, { trait: { amae: 3 }, trace: 'friend' }],    boss: [{ trait: { brave: 3, solo: 2 }, trace: 'boss' }, { trait: { easy: 3, amae: 1 }, trace: 'peace' }],
+    territory: [{ trait: { brave: 3, solo: 2 }, trace: 'pride' }, { trait: { easy: 2, amae: 2 }, trace: 'peace' }],
+    vet: [{ trait: { easy: 2, amae: 2 }, trace: 'vet' }, { trait: { solo: 2, brave: 1 }, trace: 'vet' }],
+    whiskers: [{ trait: { brave: 2, solo: 2 }, trace: 'pride' }, { trait: { solo: 2, easy: 1 }, trace: 'peace' }],
+    familyworry: [{ trait: { brave: 2, amae: 2 }, trace: 'family' }, { trait: { amae: 3, easy: 1 }, trace: 'family' }],
+    wildshadow: [{ trait: { brave: 3, solo: 2 }, trace: 'territory' }, { trait: { easy: 2, solo: 1 }, trace: 'peace' }],
+    zoocheck: [{ trait: { easy: 2, amae: 2 }, trace: 'crowd' }, { trait: { solo: 2, brave: 1 }, trace: 'crowd' }],
+    homeAlone: [{ trait: { solo: 3, easy: 1 }, trace: 'windowsill' }, { trait: { amae: 3 }, trace: 'family' }],
+    dinner: [{ trait: { foodie: 3, amae: 1 }, trace: 'fish' }, { trait: { easy: 3 }, trace: 'sunspot' }],
+    bird: [{ trait: { foodie: 2, brave: 2 }, trace: 'hunt' }, { trait: { easy: 2, amae: 1 }, trace: 'sunspot' }]
+  };
+
+  function choiceFlavor(id, optIdx) {
+    const row = CHOICE_FLAVOR[id];
+    if (!row || !row[optIdx]) return null;
+    return row[optIdx];
+  }
+
+  /* 出来事の文章から、気質の下地を少しだけ拾う */
+  const TRAIT_HINTS = [
+    { re: /食べ|ごはん|おやつ|干し魚|獲物|狩り|餌|空腹|いい匂い/, t: { foodie: 1 } },
+    { re: /家族|膝|抱|なで|名前を呼ば|寄り添|甘え/, t: { amae: 1 } },
+    { re: /ひとり|見知らぬ|縄張り|追い払|堂々|自分の道|ゆず/, t: { solo: 1 } },
+    { re: /走|飛び|登|駆け|冒険|探検|挑|戦|狩/, t: { brave: 1 } },
+    { re: /眠|ひるね|日向|日だまり|のんびり|ゆっくり|丸くな/, t: { easy: 1 } }
+  ];
+
+  function stepTraitText(st) {
+    if (!st) return '';
+    const parts = [st.title, st.text];
+    if (st.choice && st.chosen != null) {
+      const o = st.choice.options[st.chosen];
+      if (o) parts.push(o.label, o.text);
+    }
+    return parts.filter(Boolean).join(' ');
+  }
+
+  /* その時点までの気質。story の選択と出来事から毎回組み立てる（保存不要） */
+  function personalityAt(cat, idx) {
+    const empty = {
+      scores: {}, total: 0, top: null, topScore: 0, second: null, secondScore: 0,
+      stage: 0, key: null, icon: '🌱', noun: '', mod: '', label: 'これから育つ',
+      text: 'まだ無垢な子猫', boss: false
+    };
+    if (!cat || !cat.story || !cat.story.length) return empty;
+    const n = cat.story.length;
+    const i = Math.max(0, Math.min(idx == null ? 0 : idx, n - 1));
+    const s = traitBase(cat);
+    const hint = {};
+    for (let k = 0; k <= i; k++) {
+      const st = cat.story[k];
+      if (!st) continue;
+      /* 生まれた日の文面は、まだその子の性格ではない */
+      if (st.kind !== 'birth') {
+        const txt = stepTraitText(st);
+        TRAIT_HINTS.forEach(h => { if (h.re.test(txt)) addTraitScores(hint, h.t); });
+      }
+      if (st.choice && st.chosen != null) {
+        const fl = choiceFlavor(st.choice.id, st.chosen);
+        if (fl) addTraitScores(s, fl.trait);
+      }
+    }
+    TRAIT_KEYS.forEach(k => { s[k] = (s[k] || 0) + Math.min(hint[k] || 0, TRAIT_HINT_CAP); });
+    const boss = bossAt(cat, i);
+    if (boss) { s.brave += 2; s.solo += 2; }
+    const order = TRAIT_KEYS.slice().sort((a, b) => (s[b] - s[a]) || (TRAIT_KEYS.indexOf(a) - TRAIT_KEYS.indexOf(b)));
+    const top = order[0], second = order[1];
+    const topScore = s[top] || 0, secondScore = s[second] || 0;
+    const total = TRAIT_KEYS.reduce((a, k) => a + (s[k] || 0), 0);
+    let stage = 0;
+    if (topScore >= TRAIT_STAGE1) {
+      stage = 1;
+      if (secondScore >= Math.max(TRAIT_DUO, Math.round(topScore * 0.7))) stage = topScore >= TRAIT_RIPE ? 3 : 2;
+    }
+    const t1 = TRAITS[top], t2 = TRAITS[second];
+    let label = 'これから育つ';
+    let text = 'まだ無垢な子猫';
+    let key = null;
+    let icon = '🌱';
+    if (stage === 1) { label = t1.noun; text = t1.noun; key = top; icon = t1.icon; }
+    else if (stage === 2) { label = t1.mod + t2.noun; text = label; key = top; icon = t1.icon; }
+    else if (stage === 3) { label = 'すっかり' + t1.mod + t2.noun; text = label; key = top; icon = t1.icon; }
+    return {
+      scores: s, total: total, top: top, topScore: topScore, second: second, secondScore: secondScore,
+      stage: stage, key: key, icon: icon, noun: stage ? t1.noun : '', mod: stage ? t1.mod : '',
+      label: label, text: text, boss: boss
+    };
+  }
+
+  function personalityText(cat, idx) {
+    const p = personalityAt(cat, idx);
+    return p.stage ? p.icon + ' ' + p.label : '🌱 性格：これから育つ';
+  }
+
+  /* ============================================================
+     思い出の痕跡 — 歩いた出来事・選んだ2択が、その子の持ち物になる
+     ・文章のキーワードと、選んだ2択から決定的に拾う（保存不要）
+     ・1猫生で最大8個。増えるたびに棚にポンと並ぶ
+     ============================================================ */
+  const TRACE_MAX = 8;
+  const TRACES = [
+    { key: 'home', icon: '🏠', label: 'あたたかいおうち', note: '名前を呼ばれる、帰る場所', where: 'any', prio: 3, re: /拾われ|家族に迎え|家の猫|おうち/ },
+    { key: 'collar', icon: '🔔', label: 'もらった首輪', note: '拾われた日の、小さなしるし', where: 'any', prio: 3, re: /首輪|鈴の音|鈴/ },
+    { key: 'yarn', icon: '🧶', label: 'お気に入りの毛糸', note: 'ほどいては、また遊んだ', where: 'home', prio: 2, re: /毛糸|じゃらし|おもちゃ|糸/ },
+    { key: 'box', icon: '📦', label: '秘密の段ボール', note: '世界でいちばん落ち着く箱', where: 'home', prio: 2, re: /段ボール|箱/ },
+    { key: 'windowsill', icon: '🪟', label: '窓辺の定位置', note: 'ここから外を眺めるのが日課', where: 'any', prio: 2, re: /窓辺|窓の外|窓際|窓に/ },
+    { key: 'fish', icon: '🐟', label: '魚屋のおっちゃん', note: 'いい匂いのする人', where: 'any', prio: 2, re: /魚|干し魚|おにぎり|練り物/ },
+    { key: 'warm', icon: '🔥', label: '冬の特等席', note: '暖かい場所は、ゆずれない', where: 'any', prio: 2, re: /暖房|ストーブ|こたつ|毛布|あったか/ },
+    { key: 'sunspot', icon: '☀️', label: '日向の特等席', note: 'いちばん気持ちいい場所', where: 'any', prio: 2, re: /日だまり|日向|日なた/ },
+    { key: 'vet', icon: '🩺', label: 'かかりつけの獣医', note: 'ちょっと苦手な、いい人', where: 'any', prio: 2, re: /獣医|病院|ワクチン|健康診断|注射/ },
+    { key: 'tower', icon: '🗼', label: '高いところの特等席', note: '上から見るのが好き', where: 'any', prio: 2, re: /キャットタワー|屋根|塀の上|木の上|高いところ/ },
+    { key: 'family', icon: '👪', label: '家族の笑い声', note: '帰る場所がある', where: 'home', prio: 2, re: /家族|飼い主|膝|抱き上げ/ },
+    { key: 'friend', icon: '🐾', label: '仲良しの野良仲間', note: '寄り添って眠った夜', where: 'any', prio: 2, re: /仲間|きょうだい|寄り添|餌やり/ },
+    { key: 'boss', icon: '👑', label: '路地裏のボス猫', note: 'この道は、おれのもの', where: 'out', prio: 5 },
+    { key: 'territory', icon: '👑', label: '縄張りの主', note: 'ここは、おれの縄張りだ', where: 'any', prio: 5 },
+    { key: 'peace', icon: '🕊', label: '平和主義', note: '争わないのも、つよさ', where: 'any', prio: 5 },
+    { key: 'pride', icon: '😼', label: 'ゆずらない誇り', note: 'この場所だけは引かない', where: 'any', prio: 5 },
+    { key: 'freedom', icon: '🐾', label: '自分の道を行く', note: '誰にも決められない一生', where: 'any', prio: 5 },
+    { key: 'road', icon: '🚗', label: '車の下のねぐら', note: 'エンジンの音が子守唄', where: 'out', prio: 2, re: /車の下|エンジンルーム|道路|ガードレール|駐車場/ },
+    { key: 'rain', icon: '☔', label: '雨宿りの軒先', note: '雨の日は、軒下で', where: 'any', prio: 2, re: /雨|軒先|軒下/ },
+    { key: 'store', icon: '🏪', label: 'コンビニの店先', note: '店員さんがくれた夜', where: 'out', prio: 2, re: /コンビニ|店先/ },
+    { key: 'hunt', icon: '🐁', label: 'はじめての狩り', note: '自分で獲った、はじめての一匹', where: 'any', prio: 2, re: /狩り|獲物|虫|バッタ|トカゲ|鳥/ },
+    { key: 'sakura', icon: '🌸', label: '桜の木の下', note: '花びらが、鼻の先にとまった', where: 'any', prio: 2, season: 'spring', re: /桜|花びら/ },
+    { key: 'snow', icon: '❄️', label: 'はじめての雪', note: '白い粒を、前足で追った', where: 'any', prio: 2, season: 'winter', re: /雪|初雪/ },
+    { key: 'leaves', icon: '🍁', label: '落ち葉のベッド', note: 'がさがさの音が好き', where: 'any', prio: 2, season: 'autumn', re: /落ち葉|紅葉/ },
+    { key: 'summer', icon: '🌻', label: '夏の日差し', note: '蝉の声と、冷たい床', where: 'any', prio: 2, season: 'summer', re: /蝉|夕立|夏の|扇風機/ },
+    { key: 'moon', icon: '🌙', label: '月夜の見回り', note: '夜の街は、自分のもの', where: 'out', prio: 2, re: /月|夜道|夜ごと|夜の見回り/ },
+    { key: 'crowd', icon: '📸', label: 'ガラスの向こうの人気者', note: '毎日、誰かが見ていた', where: 'any', prio: 2, routes: ['zoo'], re: /ガラス|お客さん/ },
+    { key: 'wildland', icon: '🌿', label: '自分の縄張り', note: '匂いで囲った、自分の土地', where: 'any', prio: 2, kinds: ['wild'], re: /縄張り/ }
+  ];
+  const TRACE_MAP = {};
+  TRACES.forEach(t => { TRACE_MAP[t.key] = t; });
+
+  function traceScopeOk(t, ctx) {
+    if (!t) return false;
+    if (t.where === 'home' && !ctx.atHome) return false;
+    if (t.where === 'out' && ctx.atHome) return false;
+    if (t.season && t.season !== ctx.season) return false;
+    if (t.routes && t.routes.indexOf(ctx.route) < 0) return false;
+    if (t.kinds && t.kinds.indexOf(ctx.klass) < 0) return false;
+    return true;
+  }
+
+  /* その時点までに集まった痕跡（古い順・最大8個） */
+  function tracesAt(cat, idx) {
+    const out = [];
+    if (!cat || !cat.story || !cat.story.length) return out;
+    const n = cat.story.length;
+    const i = Math.max(0, Math.min(idx == null ? 0 : idx, n - 1));
+    const seen = {};
+    const cand = [];
+    const push = (key, at, prio) => {
+      if (!key || seen[key] || !TRACE_MAP[key]) return;
+      seen[key] = 1;
+      const d = TRACE_MAP[key];
+      cand.push({ key: key, icon: d.icon, label: d.label, note: d.note || '', at: at, prio: prio || d.prio || 2 });
+    };
+
+    let bossStep = -1;
+    for (let k = 0; k <= i; k++) {
+      const st = cat.story[k];
+      if (!st) continue;
+      const adopted = cat.adoptIndex != null && k >= cat.adoptIndex;
+      const atHome = cat.route === 'owned' || cat.route === 'purebred' || adopted;
+      const ctx = { atHome: atHome, season: st.season || null, route: cat.route, klass: cat.klass };
+      if (st.kind === 'adopt') { push('home', k, 5); push('collar', k, 5); }
+      if (st.choice && st.chosen != null) {
+        const fl = choiceFlavor(st.choice.id, st.chosen);
+        if (fl && fl.trace) push(fl.trace, k, 5);
+        const opt = st.choice.options[st.chosen];
+        if (opt && opt.effect && opt.effect.boss && bossStep < 0 && bossAt(cat, k)) bossStep = k;
+      }
+      /* 生まれた日の文面は思い出ではないので、痕跡は拾わない */
+      if (st.kind === 'birth') continue;
+      const txt = stepTraitText(st);
+      for (let j = 0; j < TRACES.length; j++) {
+        const t = TRACES[j];
+        if (!t.re || seen[t.key] || !traceScopeOk(t, ctx)) continue;
+        if (t.re.test(txt)) push(t.key, k, t.prio || 2);
+      }
+    }
+    if (bossStep >= 0) push(cat.klass === 'wild' ? 'territory' : 'boss', bossStep, 5);
+
+    cand.sort((a, b) => (b.prio - a.prio) || (a.at - b.at));
+    const keep = cand.slice(0, TRACE_MAX);
+    keep.sort((a, b) => (a.at - b.at));
+    return keep;
+  }
+
   const STORY_TITLES = {
     kitten: ['こねこの毎日', 'はじめての出来事', 'やんちゃざかり', '小さな冒険'],
     adult: ['ある日のこと', '季節がめぐる', 'いつのまにか', 'いつもの場所で'],
@@ -845,6 +1091,29 @@
       ]
     },
     {
+      id: 'dinner', tier: 'cozy', scene: 'home', min: 0.4, max: 24,
+      question: '台所から、夕飯のいい匂いがしてきた。',
+      options: [
+        { label: '足もとで待つ', text: '調理台の下を何度も往復して、とうとう一切れもらった。', effect: { food: 12, energy: 3 } },
+        { label: '寝たふりを続ける', text: '呼ばれるまで動かない。呼ばれた瞬間に走っていった。', effect: { food: 6, luck: 3 } }
+      ]
+    },
+    {
+      id: 'homeAlone', tier: 'cozy', scene: 'home', min: 0.6, max: 26,      question: '家族が出かけて、家にひとりだけになった。',
+      options: [
+        { label: 'ひとりを満喫する', text: '家中のいちばんいい場所を順番に試して、最後は真ん中で堂々と寝た。', effect: { energy: 6, luck: 3 } },
+        { label: '玄関で待つ', text: '帰ってくる足音を、ドアの前でずっと聞いていた。', effect: { luck: 6, energy: -2 } }
+      ]
+    },
+    {
+      id: 'bird', tier: 'cozy', scene: 'out', min: 0.6, max: 16,
+      question: '小さな鳥が、すぐそこに降りたった。',
+      options: [
+        { label: '息をひそめて狙う', text: 'しっぽだけ微かに動かして、飛びついた。半分だけ成功。', effect: { food: 8, energy: -2 } },
+        { label: '見送る', text: '飛び立つ音を聞いて、あくびをひとつ。今日はそれでいい。', effect: { luck: 4, energy: 2 } }
+      ]
+    },
+    {
       id: 'rain', tier: 'cozy', scene: 'any', min: 0.2, max: 24,
       question: '雨が降ってきた。',
       options: [
@@ -895,6 +1164,14 @@
       options: [
         { label: '正面から挑む', text: '低く唸って、一歩も引かなかった。その日から、この道の主は自分になった。', effect: { boss: true, life: 2, luck: 10, energy: -6 } },
         { label: '静かに道をあける', text: '頭を下げて、ゆっくり横を通った。それもまた、ひとつの生き方。', effect: { luck: 4, energy: 3 } }
+      ]
+    },
+    {
+      id: 'territory', tier: 'fate', scene: 'out', min: 1.2, max: 24,
+      question: '塀の上のいつもの場所に、よその猫が居座っている。',
+      options: [
+        { label: '前に出て、場所を守る', text: 'しっぽを太くして、低く唸った。相手はしばらく睨み返してから、ゆっくり降りていった。', effect: { energy: -4, luck: 6, life: 1 } },
+        { label: 'そっと道をゆずる', text: '相手の目を見ないまま、静かに横を通った。ゆずった先に、もっといい日だまりがあった。', effect: { energy: 3, luck: 5 } }
       ]
     },
     {
@@ -1334,8 +1611,20 @@
     const opt = step.choice.options[optIdx];
     if (!opt) return null;
     const fx = opt.effect || {};
-    const out = { chips: statChips(fx), headlines: [], lifeAdded: 0, adopted: false, boss: false, died: false };
+    const out = { chips: statChips(fx), headlines: [], lifeAdded: 0, adopted: false, boss: false, died: false, trait: null, trace: null };
     step.chosen = optIdx;
+
+    /* この選択が、その子の気質と持ち物をどう育てたか */
+    const fl = choiceFlavor(step.choice.id, optIdx);
+    if (fl) {
+      if (fl.trace && TRACE_MAP[fl.trace]) {
+        out.trace = { key: fl.trace, icon: TRACE_MAP[fl.trace].icon, label: TRACE_MAP[fl.trace].label };
+      }
+      if (fl.trait) {
+        const tk = Object.keys(fl.trait).sort((a, b) => (fl.trait[b] - fl.trait[a]) || (TRAIT_KEYS.indexOf(a) - TRAIT_KEYS.indexOf(b)));
+        if (tk.length) out.trait = { key: tk[0], icon: TRAITS[tk[0]].icon, label: TRAITS[tk[0]].noun, word: TRAITS[tk[0]].noun };
+      }
+    }
 
     if (fx.adopt && cat.adoptIndex == null) {
       if (insertAdopt(cat, idx)) {
@@ -1363,6 +1652,9 @@
       const risk = clamp(fx.risk * fateRiskFactor(cat, idx), 0.01, 0.9);
       if (r < risk) {
         killAt(cat, idx);
+        /* 倒れた子は、ボスにはなれなかった */
+        cat.bossCat = false; cat.bossTitle = null;
+        out.boss = false;
         out.died = true;
         out.headlines = ['😿 ピンチに巻き込まれた…'];
       } else {
@@ -1961,6 +2253,9 @@
     AGE_TICKS, NEKOMATA_TICKS, ageTicks, ageScalePercent, MILESTONES, milestoneAt, milestonesPassed,
     statsAt, peakStats, baseStats, statChips, FATE, fateAt, fateRiskFactor, hungerRatio, hungerToll,
     CHOICE_EVENTS, applyChoice, extendLife, insertAdopt, killAt, statRng,
+    /* 気質（性格）と思い出の痕跡 */
+    TRAITS, TRAIT_KEYS, TRAIT_STAGE1, TRAIT_DUO, traitBase, personalityAt, personalityText,
+    CHOICE_FLAVOR, choiceFlavor, TRACES, TRACE_MAX, tracesAt,
     ACHIEVEMENTS, achievementDef, evaluateAchievements
   };
 });

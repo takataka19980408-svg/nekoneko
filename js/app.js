@@ -246,6 +246,9 @@
     const st = E.statsAt(cat, story.length - 1) || { energy: 0, food: 0, luck: 0 };
     const cls = cat.klass === 'wild' ? '野生' : cat.route === 'purebred' ? '純血種' : '雑種';
     const stage = last.stage === 'kitten' ? 'kitten' : last.stage === 'senior' ? 'senior' : 'adult';
+    const persona = personalityOf(cat, Math.max(0, story.length - 1));
+    const traces = (E.tracesAt ? E.tracesAt(cat, Math.max(0, story.length - 1)) : [])
+      .map(t => ({ key: t.key, icon: t.icon, label: t.label, note: t.note || '' }));
     return {
       v: 1,
       id: albumId(cat),
@@ -281,6 +284,12 @@
       finalStage: stage,
       stats: { energy: st.energy, food: st.food, luck: st.luck },
       hungry: !!cat.hungerWeak,
+      persona: {
+        key: persona.top || '', label: persona.stage ? persona.label
+          : (Number(cat.ageYears) >= 2 ? 'どこにも寄らない自由な猫' : 'これから育つ'),
+        icon: persona.icon, stage: persona.stage
+      },
+      traces: traces,
       mutations: (cat.mutations || []).map(m => ({ key: m.key, name: m.name })),
       art: {
         type: A.typeFor(cat), stage: stage === 'kitten' ? 'kitten' : 'adult',
@@ -438,6 +447,11 @@
   }
 
   /* 常時プロフィールバー（名札） */
+  function personalityOf(cat, idx) {
+    if (E.personalityAt) return E.personalityAt(cat, idx);
+    return { stage: 0, label: 'これから育つ', icon: '🌱', text: 'まだ無垢な子猫', key: null, boss: false };
+  }
+
   function nameplateHTML(cat, idx) {
     if (!cat || !cat.story || !cat.story.length) return '';
     const i = Math.max(0, Math.min(idx == null ? 0 : idx, cat.story.length - 1));
@@ -445,6 +459,9 @@
     const st = E.statusOf(cat, i);
     const extras = (st.extra || []).map(x => `<i>｜</i><span class="np-extra">${x.icon} ${x.label}</span>`).join('');
     const season = step.season ? '・' + E.seasonEmoji(step.season) + E.seasonLabel(step.season) : '';
+    const p = personalityOf(cat, i);
+    const traitCls = 'np-trait' + (p.stage ? '' : ' is-seed') + (p.boss ? ' is-boss' : '');
+    const traitText = p.stage ? p.icon + ' ' + p.label : '🌱 性格：これから育つ';
     return `<div class="np-top">
       <span class="np-name">🐈 ${cat.name}</span>
       <span class="np-age">${step.ageLabel}${season}</span>
@@ -456,6 +473,8 @@
       <i>｜</i>
       <span class="np-status${st.tone ? ' tone-' + st.tone : ''}">${st.text}</span>
       ${extras}
+      <i>｜</i>
+      <span class="${traitCls}">${traitText}</span>
       <i>｜</i>
       <span class="np-one">${E.formatOneIn(cat.probability)}</span>
     </div>`;
@@ -472,8 +491,9 @@
       const fx = step.fx;
       const chips = fx && fx.chips ? fx.chips : (E.statChips ? E.statChips(opt.effect || {}) : '');
       const heads = fx && fx.headlines ? fx.headlines : [];
-      const fxHTML = (chips || heads.length)
-        ? `<div class="choice-fx">${chips ? `<span class="fx-chips">${chips}</span>` : ''}${heads.map(h => `<b class="fx-head">${h}</b>`).join('')}</div>`
+      const traitHTML = fx && fx.trait ? `<b class="fx-trait">🌱 ${fx.trait.label}の気質が育った</b>` : '';
+      const fxHTML = (chips || heads.length || traitHTML)
+        ? `<div class="choice-fx">${chips ? `<span class="fx-chips">${chips}</span>` : ''}${traitHTML}${heads.map(h => `<b class="fx-head">${h}</b>`).join('')}</div>`
         : '';
       return `<div class="choice-result"><span class="choice-tag">🐾 ${opt.label}</span><p>${opt.text}</p>${fxHTML}</div>`;
     }
@@ -593,9 +613,19 @@
     const subject = cat.klass === 'wild' && cat.route !== 'zoo'
       ? `${cat.speciesName}（${cat.sciName}）`
       : cat.speciesName;
+    const lastIdx = Math.max(0, (cat.story || []).length - 1);
+    const persona = personalityOf(cat, lastIdx);
+    const traces = E.tracesAt ? E.tracesAt(cat, lastIdx) : [];
     const form = cat.nekomata ? '<div class="finale-form is-nekomata">🔮 猫又（百年の猫生）</div>'
       : cat.maneki ? '<div class="finale-form is-maneki">🏮 招き猫（看板猫の一生）</div>'
       : cat.bossCat ? '<div class="finale-form is-boss">👑 ボス猫</div>' : '';
+    const personaHTML = `<div class="finale-persona${persona.stage ? '' : ' is-seed'}">🌱 育った気質：${persona.stage ? persona.label : (Number(cat.ageYears) >= 2 ? 'どこにも寄らない自由な猫' : 'これから育つ（まだ子どもだった）')}</div>`;
+    const tracesHTML = traces.length
+      ? `<div class="finale-traces">
+          <span class="finale-traces-lead">🧺 この子が残した思い出</span>
+          <ul class="finale-traces-list">${traces.map(t => `<li>${t.icon} ${t.label}</li>`).join('')}</ul>
+        </div>`
+      : '';
     return `
     <div class="finale-head">
       <span class="finale-kicker">🌈 この猫生のきろく</span>
@@ -605,7 +635,9 @@
       ${cat.adopted ? '<div class="finale-collar">🔔 拾われて、家族の猫になった子</div>' : ''}
       ${cat.hungerWeak ? '<div class="finale-hunger">🍽 おなかが足りない時期が続いて、体調を崩しやすかった</div>' : ''}
       ${form}
+      ${personaHTML}
     </div>
+    ${tracesHTML}
     ${achBurstHTML(achNew, dex)}
     <div class="prob-box">
       <div class="prob-line"><span>この猫に生まれる確率</span><b>${E.formatProb(cat.probability)}</b></div>
@@ -629,6 +661,11 @@
     else if (cat.maneki) lines.push('🏮 お店に迎えられて、招き猫になった');
     else if (cat.bossCat) lines.push('👑 この街のボス猫だった');
     if (cat.adopted) lines.push('🏡 途中で人に拾われて、家族の猫になった');
+    const lastIdx = Math.max(0, (cat.story || []).length - 1);
+    const p = personalityOf(cat, lastIdx);
+    if (p.stage) lines.push('🌱 育った気質：' + p.label);
+    const tr = (E.tracesAt ? E.tracesAt(cat, lastIdx) : []).slice(0, 3);
+    if (tr.length) lines.push('🧺 ' + tr.map(t => t.icon + t.label).join('・'));
     lines.push(`確率 ${E.formatProb(cat.probability)}（${E.formatOneIn(cat.probability)}）`);
     cat.mutations.forEach(m => lines.push('✦ ' + m.name));
     lines.push('#世界猫生ガチャ');
@@ -701,6 +738,7 @@
           <span class="album-sub">${reg.flag || '🌍'} ${reg.name || ''}</span>
           <span class="album-line">${rec.speciesName || ''}${coat ? '・' + coat : ''}</span>
           <span class="album-line">🌈 享年 <b>${ageText(ageY)}</b>${stats ? `　❤️${stats.energy} 🐟${stats.food} 🍀${stats.luck}` : ''}</span>
+          ${rec.persona && rec.persona.stage ? `<span class="album-line album-persona-line">${rec.persona.icon || '🌱'} ${rec.persona.label}</span>` : ''}
           <span class="album-flags">${albumFlagsHTML(rec)}</span>
         </span>
       </div>
@@ -775,9 +813,11 @@
       ['目の色', rec.eyeColor || '—'],
       ['珍しさ', `${E.formatOneIn(rec.probability || 0)}${rec.probability ? '（' + E.formatProb(rec.probability) + '）' : ''}`],
       ['境遇', rec.statusLabel || '—'],
+      ['気質', rec.persona && rec.persona.stage ? `${rec.persona.icon || '🌱'} ${rec.persona.label}` : '—'],
       ['享年', `${ageText(ageY)}${cause ? '（' + cause + '）' : ''}`]
     ].map(r => `<div class="who-row"><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
     const stats = rec.stats || { energy: 0, food: 0, luck: 0 };
+    const traces = Array.isArray(rec.traces) ? rec.traces.filter(t => t && t.label) : [];
     const logs = Array.isArray(rec.logs) ? rec.logs : [];
     const timeline = logs.length
       ? `<ol class="album-timeline">${logs.map(albumStepHTML).join('')}</ol>`
@@ -808,6 +848,7 @@
           <span class="album-stat">🐟 おなか ${stats.food}</span>
           <span class="album-stat">🍀 うん ${stats.luck}</span>
         </div>
+        ${traces.length ? `<div class="album-final"><span class="album-final-title">🧺 この子が残した思い出</span><div class="album-traces">${traces.map(t => `<span class="album-trace">${t.icon} ${t.label}</span>`).join('')}</div></div>` : ''}
         <div class="album-timeline-wrap">
           <h4 class="album-timeline-head"><span>🐾 生まれた日から、最期まで</span><span>${logs.length}歩</span></h4>
           ${trimNote}
@@ -897,7 +938,8 @@
       auto: true, speed: 1, autoTimer: null, newAch: [], shownForm: null, rulerKey: null, msShown: {},
       started: false, choiceTimer: null, choiceLeft: null, choiceStart: 0, autoPicked: false,
       albumId: null, albumFrom: null, albumFilter: 'all',
-      shownPinch: false, cardURL: '', cardName: ''
+      shownPinch: false, cardURL: '', cardName: '',
+      traceInit: false, traceKeys: {}, traceList: [], spoken: {}, walkTimer: null
     };
 
     const el = {
@@ -912,12 +954,14 @@
       finale: $('finale'), finaleBody: $('finaleBody'), nameplate: $('nameplate'),
       memories: $('memories'), memoryList: $('memoryList'),
       catStage: $('catStage'), stageScene: $('stageScene'), stageParticles: $('stageParticles'),
+      stageSeason: $('stageSeason'),
       catActor: $('catActor'), stageToast: $('stageToast'), stats: $('stats'),
       tapHint: $('tapHint'), stageMood: $('stageMood'),
       autoBar: $('autoBar'),
       autoBtn: $('autoBtn'), autoBtnIcon: $('autoBtnIcon'), autoBtnText: $('autoBtnText'),
       autoNote: $('autoNote'), speed1: $('speed1'), speed2: $('speed2'),
       lifeAge: $('lifeAge'), lifeSeason: $('lifeSeason'), lifeMarks: $('lifeMarks'),
+      traceShelf: $('traceShelf'),
       stagePinch: $('stagePinch'), stageAlert: $('stageAlert'),
       cardBtn: $('cardBtn'), cardModal: $('cardModal'), cardImg: $('cardImg'), cardPreview: $('cardPreview'),
       cardDownload: $('cardDownload'), cardShare: $('cardShare'), cardNative: $('cardNative'), closeCard: $('closeCard')
@@ -965,11 +1009,86 @@
 
     function paintScene(cat, idx, dead) {
       const key = dead ? 'finale' : A.sceneKeyFor(cat, idx);
-      if (state.shownScene !== key) {
-        state.shownScene = key;
-        el.stageScene.className = 'stage-scene scene--' + key;
+      const step = cat.story[idx];
+      const season = (!dead && step && step.season) ? step.season : '';
+      const sig = key + '|' + season;
+      if (state.shownScene !== sig) {
+        state.shownScene = sig;
+        el.stageScene.className = 'stage-scene scene--' + key + (season ? ' season--' + season : '');
         el.stageParticles.innerHTML = A.particlesHTML(cat, idx, dead);
       }
+      if (el.stageSeason) el.stageSeason.className = 'stage-season' + (season ? ' season--' + season : '');
+      /* 季節の空気はステージ全体にも効かせる（冬の白い息など） */
+      if (el.catStage && el.catStage.classList) {
+        ['spring', 'summer', 'autumn', 'winter'].forEach(s => el.catStage.classList.remove('season--' + s));
+        if (season) el.catStage.classList.add('season--' + season);
+      }
+    }
+
+    /* --- 1歩分のトコトコ歩き＋背景スクロール --- */
+    function walkMotion() {
+      const art = document.getElementById('catArt');
+      const scene = el.stageScene;
+      if (scene && scene.classList) {
+        scene.classList.remove('is-walking');
+        void scene.offsetWidth;
+        scene.classList.add('is-walking');
+      }
+      if (art && art.classList) {
+        art.classList.remove('is-walking');
+        void art.offsetWidth;
+        art.classList.add('is-walking');
+      }
+      const t = root.setTimeout || setTimeout;
+      if (state.walkTimer) clearTimeout(state.walkTimer);
+      state.walkTimer = t(function () {
+        if (scene && scene.classList) scene.classList.remove('is-walking');
+        if (art && art.classList) art.classList.remove('is-walking');
+        state.walkTimer = null;
+      }, 1000);
+    }
+
+    /* --- 吹き出し --- */
+    function showBubble(b, ms) {
+      if (!b) return;
+      const layer = document.getElementById('bubbleLayer');
+      if (!layer) return;
+      const left = 26 + Math.round((state.taps * 37 + (state.step || 0) * 11) % 46);
+      layer.innerHTML = `<span class="bubble" style="left:${left}%"><b>${b.emoji || '💬'}</b>${b.text}</span>`;
+      const t = root.setTimeout || setTimeout;
+      t(function () { if (layer) layer.innerHTML = ''; }, ms || 3100);
+    }
+
+    /* --- 思い出の痕跡（ステージ下の小さな棚） --- */
+    function traceChipHTML(tr, isNew) {
+      const cls = 'trace-chip' + (isNew ? ' is-new' : '')
+        + (tr.key === 'boss' || tr.key === 'territory' ? ' is-boss' : '')
+        + (tr.key === 'peace' ? ' is-peace' : '');
+      const note = tr.note ? ` title="${tr.note}"` : '';
+      return `<span class="${cls}" data-trace="${tr.key}"${note}><b>${tr.icon}</b>${tr.label}</span>`;
+    }
+
+    function renderTraces(cat, idx) {
+      if (!el.traceShelf) return;
+      const list = E.tracesAt ? E.tracesAt(cat, idx) : [];
+      state.traceList = list;
+      if (!list.length) {
+        el.traceShelf.hidden = true;
+        el.traceShelf.innerHTML = '';
+        return;
+      }
+      el.traceShelf.hidden = false;
+      const first = !state.traceInit;
+      state.traceInit = true;
+      const fresh = [];
+      const html = list.map(tr => {
+        const isNew = !state.traceKeys[tr.key];
+        if (isNew) { state.traceKeys[tr.key] = 1; if (!first) fresh.push(tr); }
+        return traceChipHTML(tr, isNew && !first);
+      }).join('');
+      el.traceShelf.innerHTML = `<span class="trace-lead">🧺 思い出</span>` + html;
+      const crown = fresh.filter(tr => tr.key === 'boss' || tr.key === 'territory')[0];
+      if (crown && state.started) toast('👑 ' + crown.label + 'になった！', 'evolve');
     }
 
     function mountStage(cat) {
@@ -1073,7 +1192,7 @@
       }
     }
 
-    /* --- 猫をタップすると跳ねる --- */
+    /* --- 猫をタップすると跳ねる（育った気質でセリフが変わる） --- */
     function tapCat() {
       const cat = state.current;
       if (!cat) return;
@@ -1084,15 +1203,25 @@
         art.classList.add('is-hop');
       }
       state.taps += 1;
-      const b = A.bubbleFor(cat.seed || 1, state.taps);
-      const layer = document.getElementById('bubbleLayer');
-      if (layer) {
-        layer.innerHTML = `<span class="bubble" style="left:${30 + Math.round((state.taps * 37) % 40)}%"><b>${b.emoji}</b>${b.text}</span>`;
-        const t = root.setTimeout || setTimeout;
-        t(function () { if (layer) layer.innerHTML = ''; }, 3100);
-      }
+      const persona = personalityOf(cat, state.step);
+      const b = A.bubbleFor(cat.seed || 1, state.taps, persona);
+      showBubble(b, 3100);
     }
     el.catActor.addEventListener('click', tapCat);
+
+    /* 棚の痕跡をタップすると、その思い出の説明が出る */
+    if (el.traceShelf && el.traceShelf.addEventListener) {
+      el.traceShelf.addEventListener('click', (ev) => {
+        const t = ev && ev.target;
+        const chip = t && t.closest ? t.closest('[data-trace]') : null;
+        if (!chip || !chip.getAttribute) return;
+        const key = chip.getAttribute('data-trace');
+        const rec = (state.traceList || []).filter(x => x.key === key)[0];
+        if (!rec) return;
+        toast(rec.icon + ' ' + rec.label + (rec.note ? ' — ' + rec.note : ''), 'adopt');
+        showBubble({ emoji: rec.icon, text: rec.note || rec.label }, 2600);
+      });
+    }
 
     /* --- オート進行（2択が来たら自動でひと休み） --- */
     /* 1x=3.8秒 / 2x=1.9秒。15歳の猫生（約52歩）が1xで約3分20秒＋2択の時間 */
@@ -1254,6 +1383,20 @@
       }
     }
 
+    /* 歩いたときのひとこと（気質が変わったとき・4歩ごと） */
+    function speakOnStep(cat, idx, step) {
+      if (!state.started || !step) return;
+      if (step.kind === 'death' || step.kind === 'birth') return;
+      if (state.spoken[idx]) return;
+      state.spoken[idx] = 1;
+      const p = personalityOf(cat, idx);
+      const prev = idx > 0 ? personalityOf(cat, idx - 1) : null;
+      const grew = !!(p.stage && p.label !== (prev ? prev.label : ''));
+      const beat = idx > 0 && idx % 4 === 0;
+      if (!grew && !beat) return;
+      showBubble(A.speechFor(cat, idx, p), 2600);
+    }
+
     /* --- ストーリー --- */
     function renderStory() {
       const cat = state.current;
@@ -1269,6 +1412,8 @@
       if (el.nameplate) el.nameplate.innerHTML = nameplateHTML(cat, idx);
       updateStage(cat, idx);
       renderAgeStrip(cat, idx);
+      renderTraces(cat, idx);
+      speakOnStep(cat, idx, step);
 
       /* 人生の節目（1歳・3歳・6歳・10歳・15歳・20歳…）を知らせる */
       const ms = E.milestoneAt(cat.story, idx);
@@ -1326,6 +1471,11 @@
       state.adopted = false;
       state.shownStage = null;
       state.shownScene = null;
+      state.traceInit = false;
+      state.traceKeys = {};
+      state.traceList = [];
+      state.spoken = {};
+      if (el.traceShelf) { el.traceShelf.innerHTML = ''; el.traceShelf.hidden = true; }
       el.home.hidden = true;
       el.story.hidden = false;
       mountStage(cat);
@@ -1342,6 +1492,7 @@
       if (!state.started) state.started = true;
       state.step += 1;
       renderStory();
+      walkMotion();
     }
 
     function skipAll() {
@@ -1370,6 +1521,7 @@
       state.choiceLeft = null;
       hideChoiceClock();
       const autoPick = !!state.autoPicked;
+      const pBefore = personalityOf(cat, idx);
       const fx = E.applyChoice(cat, idx, i);
       /* 放っておいて選ばれたのか（おまかせ）、読んで選んだのかを記録に残す */
       if (step.chosen === i) step.autoPicked = autoPick;
@@ -1381,7 +1533,14 @@
         else if (fx.adopted) toast(cat.maneki ? '🏮 お店に迎えられた！' : '🏡 家族に迎えられた！', 'adopt');
         else if (fx.boss) toast('👑 ボス猫への道！', 'evolve');
         else if (fx.lifeAdded) toast('✨ 寿命が延びた！', 'milestone');
+        else {
+          const pAfter = personalityOf(cat, idx);
+          if (pAfter.stage > 0 && pAfter.label !== pBefore.label) {
+            toast('🌱 気質が育った：' + pAfter.label, 'grow');
+          }
+        }
       }
+      walkMotion();
     }
 
     function backHome() {
@@ -1659,6 +1818,9 @@
     root.CATAPP.openDex = openDex;
     root.CATAPP.state = state;
     root.CATAPP.zoomGuard = ZOOM_GUARD;
+    root.CATAPP.walkMotion = walkMotion;
+    root.CATAPP.renderTraces = renderTraces;
+    root.CATAPP.showBubble = showBubble;
     root.CATAPP.tapCat = tapCat;
     root.CATAPP.autoTick = autoTick;
     root.CATAPP.toggleAuto = toggleAuto;
@@ -1685,7 +1847,7 @@
     buildStepHTML: stepCardHTML, buildFinaleHTML, buildDexHTML, shareText, shareURL,
     achievement, record, unlockAchievements, loadDex, emptyDex, eyeName, bornLine,
     nameplateHTML, profileHTML, rareCardHTML, eyeText, progressHTML,
-    TOTAL_TARGETS, CATALOG, formAt, achBurstHTML,
+    personalityOf, TOTAL_TARGETS, CATALOG, formAt, achBurstHTML,
     buildResultHTML: function (cat) { return stepCardHTML(cat, 0, {}); },
     albumEntry, albumLogs, albumListHTML, albumDetailHTML, albumCardHTML, albumFilterHTML,
     albumStepHTML, albumFlagsHTML, albumStill, saveDex, ALBUM_MAX, FAV_MAX, CAUSE_JP,

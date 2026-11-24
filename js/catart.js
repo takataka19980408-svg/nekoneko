@@ -212,7 +212,12 @@
     const key = sceneKeyFor(cat, idx);
     const step = cat && cat.story && idx != null ? cat.story[idx] : null;
     const season = step && step.season;
-    if (season && SEASON_PARTICLES[season] && SEASON_SCENES[key]) return SEASON_PARTICLES[season];
+    if (season && SEASON_PARTICLES[season]) {
+      /* 室内・街中は季節の舞うものを主役に。屋外は季節＋その土地のしるしを混ぜる */
+      if (SEASON_SCENES[key]) return SEASON_PARTICLES[season];
+      const base = PARTICLES[key] || PARTICLES.home;
+      return SEASON_PARTICLES[season].slice(0, 2).concat(base.slice(0, 1));
+    }
     return PARTICLES[key] || PARTICLES.home;
   }
 
@@ -280,11 +285,51 @@
   /* ---------- 吹き出し ---------- */
   const BUBBLES = ['にゃー♪', 'ごろごろ…', 'ふにゃ？', 'みゃう', 'にゃん！', 'ゴロゴロ'];
   const BUBBLE_EMOJI = ['❤️', '🎵', '✨', '💕', '🐾'];
-  function bubbleFor(seed, n) {
+
+  /* 育った気質ごとの口ぐせ。タップしたとき・歩いたときのセリフが変わる */
+  const TRAIT_LINES = {
+    amae: { emoji: '💕', lines: ['なでて〜', 'おうちまだ？', 'そばにいて', 'ここがいいの', 'もっと近く'] },
+    solo: { emoji: '🌙', lines: ['べつに寂しくないし', '自分の道を行く', 'ひとりの方がいい', '気にしない', 'こっちに来ないで'] },
+    foodie: { emoji: '🍚', lines: ['ごはんまだかな', 'いい匂いする！', 'おかわりある？', 'たべものの夢', 'ここ、なんかある'] },
+    brave: { emoji: '⚡', lines: ['いってくる！', 'あっちが気になる', 'まけないぞ', 'たかく昇る', 'まずは自分で見てくる'] },
+    easy: { emoji: '☕', lines: ['ねむい…', 'ま、いっか', 'ひなたでねる', 'ゆっくりいこう', 'あわてない'] }
+  };
+  const BOSS_LINES = ['この道はおれのもの', 'どけどけ', 'みんな見てる', 'ここを通るなら、挨拶しろ', 'おれがこの辺りの主だ'];
+
+  function bubbleFor(seed, n, persona) {
+    const k = (n || 0);
+    const boss = persona && persona.boss;
+    if (boss && hash01(seed, k * 7 + 3) < 0.62) {
+      return {
+        text: BOSS_LINES[Math.floor(hash01(seed, k * 7 + 1) * BOSS_LINES.length) % BOSS_LINES.length],
+        emoji: '👑'
+      };
+    }
+    const set = persona && persona.key ? TRAIT_LINES[persona.key] : null;
+    if (set) {
+      return {
+        text: set.lines[Math.floor(hash01(seed, k * 3 + 1) * set.lines.length) % set.lines.length],
+        emoji: set.emoji
+      };
+    }
     return {
       text: BUBBLES[Math.floor(hash01(seed, n * 3 + 1) * BUBBLES.length) % BUBBLES.length],
       emoji: BUBBLE_EMOJI[Math.floor(hash01(seed, n * 3 + 2) * BUBBLE_EMOJI.length) % BUBBLE_EMOJI.length]
     };
+  }
+
+  /* 歩いたときのひとこと（気質・ボス・季節から決定的に選ぶ） */
+  function speechFor(cat, idx, persona) {
+    const seed = (cat && cat.seed) || 1;
+    const i = idx || 0;
+    if (persona && persona.boss && hash01(seed, i * 11 + 5) < 0.5) {
+      return { text: BOSS_LINES[Math.floor(hash01(seed, i * 11 + 2) * BOSS_LINES.length) % BOSS_LINES.length], emoji: '👑' };
+    }
+    const set = persona && persona.key ? TRAIT_LINES[persona.key] : null;
+    if (set) {
+      return { text: set.lines[Math.floor(hash01(seed, i * 5 + 2) * set.lines.length) % set.lines.length], emoji: set.emoji };
+    }
+    return bubbleFor(seed, i + 1, persona);
   }
 
   /* ---------- 鈴付き首輪 ----------
@@ -421,6 +466,7 @@
         <img class="cat-img cat-img--kitten ${kittenOn ? 'is-on' : ''}" id="catImgKitten" src="${imgPath(t, 'kitten')}" alt="${escapeAttr(alt)}の子猫" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
         <img class="cat-img cat-img--adult ${kittenOn ? '' : 'is-on'}" id="catImgAdult" src="${imgPath(t, 'adult')}" alt="${escapeAttr(alt)}の成猫" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
         ${collarHTML()}
+        <span class="cat-breath" aria-hidden="true"></span>
         <span class="growth-spark" aria-hidden="true">✨</span>
       </div>
       <div class="bubble-layer" id="bubbleLayer" aria-hidden="true"></div>
@@ -471,7 +517,8 @@
     ASSET_DIR, ASSET_V, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
     typeFor, shapeType, assetPath, imgPath, assetStage, patternType, colorFamily,
     sceneKeyFor, sceneLabel, sceneClassOf, particlesFor, particlesHTML,
-    statsFor, statsHTML, bubbleFor, collarHTML, actorHTML, stillHTML, heroHTML,
+    statsFor, statsHTML, bubbleFor, speechFor, TRAIT_LINES, BOSS_LINES,
+    collarHTML, actorHTML, stillHTML, heroHTML,
     COLLAR, collarFor, collarVars
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

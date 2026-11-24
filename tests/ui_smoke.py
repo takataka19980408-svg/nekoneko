@@ -575,6 +575,78 @@ def main():
         print("[NG] 歩みの振り返りが描画されていない")
         return 1
 
+    # --- 気質・痕跡・季節の演出 ---
+    print("\n--- 気質・痕跡・季節の演出 ---")
+    grow = json.loads(ctx.eval(r"""
+      (function(){
+        var out = {};
+        var fin = document.getElementById('finaleBody').innerHTML;
+        out.finalePersona = fin.indexOf('気質') >= 0;
+        out.finaleTraces = fin.indexOf('残した思い出') >= 0;
+        var shelf = document.getElementById('traceShelf');
+        out.shelfChips = (String(shelf.innerHTML).match(/trace-chip/g) || []).length;
+        out.shelfLead = String(shelf.innerHTML).indexOf('思い出') >= 0;
+        out.shelfHidden = !!shelf.hidden;
+        /* 1歩ごとのトコトコ歩きと背景スクロール */
+        CATAPP.state.auto = false;
+        CATAPP.walkMotion();
+        out.walkScene = document.getElementById('stageScene').classList.contains('is-walking');
+        out.walkArt = document.getElementById('catArt').classList.contains('is-walking');
+        __runTimers(1100);
+        out.walkStopped = !document.getElementById('stageScene').classList.contains('is-walking')
+          && !document.getElementById('catArt').classList.contains('is-walking');
+        /* 冬のステージ（季節の空気・雪・白い息） */
+        var c = null, k0 = -1;
+        for (var s = 1; s < 4000 && !c; s++) {
+          var x = CATGACHA.rollCat(s * 7919 + 5);
+          if (x.nekomata || x.maneki) continue;
+          for (var k = 1; k < x.story.length - 1; k++) {
+            if (x.story[k].season === 'winter' && x.story[k].kind === 'event') { c = x; k0 = k; break; }
+          }
+        }
+        out.foundWinter = !!c;
+        CATAPP.start(c);
+        CATAPP.state.auto = false;
+        out.birthShelfHidden = !!document.getElementById('traceShelf').hidden;
+        out.birthTrait = document.getElementById('nameplate').innerHTML.indexOf('これから育つ') >= 0;
+        CATAPP.state.step = k0;
+        CATAPP.state.started = true;
+        CATAPP.render();
+        out.winterScene = document.getElementById('stageScene').className;
+        out.winterOverlay = document.getElementById('stageSeason').className;
+        out.winterStage = document.getElementById('catStage').classList.contains('season--winter');
+        out.winterParticles = document.getElementById('stageParticles').innerHTML.indexOf('❄') >= 0;
+        out.winterBreath = String(CATART.actorHTML(c, {stage: 'adult'})).indexOf('cat-breath') >= 0;
+        out.nameplateTrait = document.getElementById('nameplate').innerHTML.indexOf('np-trait') >= 0;
+        out.foodieLine = CATART.bubbleFor(11, 1, {key: 'foodie'}).text;
+        var boss = {};
+        for (var t = 1; t <= 12; t++) boss[CATART.bubbleFor(11, t, {boss: true, key: 'solo'}).emoji] = 1;
+        out.bossEmoji = Object.keys(boss).join(',');
+        out.traitWords = CATGACHA.TRAIT_KEYS.map(function(k){ return CATGACHA.TRAITS[k].noun; }).join('/');
+        CATAPP.state.auto = true;
+        return JSON.stringify(out);
+      })()
+    """))
+    print("  フィナーレ: 気質=", grow["finalePersona"], "痕跡=", grow["finaleTraces"])
+    print("  痕跡棚のチップ:", grow["shelfChips"], "個（非表示=", grow["shelfHidden"], "）")
+    print("  歩きモーション: 背景=", grow["walkScene"], "猫=", grow["walkArt"], "停止=", grow["walkStopped"])
+    print("  冬のステージ:", grow["winterScene"], "/ オーバーレイ:", grow["winterOverlay"])
+    print("  気質のセリフ:", grow["foodieLine"], "/ ボス絵文字:", grow["bossEmoji"], "/ 気質:", grow["traitWords"])
+    check(grow["finalePersona"], "フィナーレに育った気質が出ない")
+    check(grow["finaleTraces"], "フィナーレに思い出の痕跡が出ない")
+    check(1 <= grow["shelfChips"] <= 8 and grow["shelfLead"] and not grow["shelfHidden"], "痕跡棚が正しく並ばない")
+    check(grow["walkScene"] and grow["walkArt"], "歩いても背景/猫の歩きモーションが始まらない")
+    check(grow["walkStopped"], "歩きモーションが止まらない（呼吸に戻らない）")
+    check(grow["foundWinter"] and "season--winter" in grow["winterScene"], "冬の季節クラスがステージに付かない")
+    check("season--winter" in grow["winterOverlay"], "冬の光のオーバーレイが切り替わらない")
+    check(grow["winterStage"] and grow["winterParticles"], "冬のステージに雪/季節の演出が出ない")
+    check(grow["winterBreath"], "冬の白い息の要素がない")
+    check(grow["birthShelfHidden"] and grow["birthTrait"], "生まれた直後の気質/痕跡の初期状態が不正")
+    check(grow["nameplateTrait"], "名札に気質が出ていない")
+    check(grow["foodieLine"] in ["ごはんまだかな", "いい匂いする！", "おかわりある？", "たべものの夢", "ここ、なんかある"], "気質でセリフが変わらない")
+    check("👑" in grow["bossEmoji"], "ボス猫のセリフが出ない")
+    check(len(grow["traitWords"].split("/")) == 5, "気質の軸が5つでない")
+
     # --- シェア ---
     ctx.eval("__handlers['shareBtn:click'][0]()")
     opened = ctx.eval("JSON.stringify(__opened)")
