@@ -964,7 +964,7 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 .bubble-layer { position: absolute; inset: 0; pointer-events: none; }
 .bubble {
   position: absolute;
-  top: 4%;
+  top: 34px;
   transform: translateX(-50%);
   background: var(--paper-2);
   border: var(--edge-thin);
@@ -979,10 +979,10 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 }
 .bubble b { margin-right: 3px; }
 @keyframes floatUp {
-  0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); }
-  18% { opacity: 1; transform: translate(-50%, -2px) scale(1.02); }
+  0% { opacity: 0; transform: translate(-50%, 8px) scale(.8); }
+  18% { opacity: 1; transform: translate(-50%, 0) scale(1.02); }
   72% { opacity: 1; }
-  100% { opacity: 0; transform: translate(-50%, -46px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -26px) scale(1); }
 }
 
 /* ステージ内のお知らせ */
