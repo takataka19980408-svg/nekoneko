@@ -812,27 +812,29 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
 .stage-trail { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
 .trail-paw {
   position: absolute;
-  bottom: 13%;
-  font-size: 12px;
+  bottom: 19%;
+  width: 16px;
+  height: 16px;
   opacity: 0;
   animation: pawDrift 1.45s ease-out forwards;
-  filter: grayscale(1) contrast(.7) opacity(.55);
+  background: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='%23fff7e2' stroke='%233a2a1e' stroke-width='1.5'%3E%3Cellipse cx='12' cy='16' rx='5.2' ry='4.4'/%3E%3Cellipse cx='5.6' cy='10.4' rx='2.4' ry='2.8'/%3E%3Cellipse cx='10' cy='7.2' rx='2.3' ry='2.9'/%3E%3Cellipse cx='14.6' cy='7.4' rx='2.3' ry='2.9'/%3E%3Cellipse cx='18.8' cy='10.8' rx='2.3' ry='2.7'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
 }
 .trail-paw.is-l { --tilt: -16deg; }
 .trail-paw.is-r { --tilt: 12deg; }
 @keyframes pawDrift {
   0% { opacity: 0; transform: translate(8px, -4px) rotate(var(--r, 0deg)) scale(.65); }
-  16% { opacity: .75; }
-  60% { opacity: .45; }
+  16% { opacity: .95; }
+  60% { opacity: .6; }
   100% { opacity: 0; transform: translate(-64px, 3px) rotate(var(--r, 0deg)) scale(1.05); }
 }
 .trail-dust {
   position: absolute;
   bottom: 11%;
-  width: 11px;
-  height: 9px;
+  width: 12px;
+  height: 10px;
   border-radius: 50%;
-  background: rgba(120, 90, 60, .35);
+  background: rgba(255, 247, 226, .8);
+  border: 1px solid rgba(58, 42, 30, .35);
   animation: dustPuff .9s ease-out forwards;
 }
 @keyframes dustPuff {

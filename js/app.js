@@ -1045,7 +1045,7 @@
       if (layer.childNodes && layer.childNodes.length > 18) return;
       state.trailN = (state.trailN || 0) + 1;
       const n = state.trailN;
-      const left = 46 + (n % 5) * 2.2;
+      const left = 37 + (n % 5) * 1.8;
       const t = root.setTimeout || setTimeout;
       if (kind === 'dust') {
         node.className = 'trail-dust';
@@ -1058,7 +1058,6 @@
       node.className = 'trail-paw' + (n % 2 ? ' is-l' : ' is-r');
       node.style.left = left + '%';
       node.style.setProperty && node.style.setProperty('--r', ((n % 4) - 1.5) * 9 + 'deg');
-      node.textContent = '🐾';
       layer.appendChild(node);
       t(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 1500);
     }
