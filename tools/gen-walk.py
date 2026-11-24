@@ -19,6 +19,9 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+import cutout  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "tmp", "walkgen")
 OUT = os.path.join(ROOT, "assets", "cats-walk")
@@ -122,11 +125,27 @@ def main():
     ap.add_argument("--pose", action="append", choices=list(POSE))
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--reslice", action="store_true",
+                    help="生成済みの原画から、walk-1/walk-2 を共通の切り出し矩形で作り直す")
     a = ap.parse_args()
     os.makedirs(RAW, exist_ok=True)
     os.makedirs(OUT, exist_ok=True)
     poses = a.pose or ["walk-1", "walk-2", "rest"]
     types = [t for t in (a.types or TYPES) if t in LOOK]
+    if a.reslice:
+        for t in types:
+            raws = [os.path.join(RAW, f"{t}-walk-1.png"), os.path.join(RAW, f"{t}-walk-2.png")]
+            if t == "tabby":
+                raws = [PROTO["walk-1"], PROTO["walk-2"]]
+            if not all(os.path.exists(x) for x in raws):
+                print(f"skip {t}: 原画なし")
+                continue
+            outs = cutout.cutout_pair(raws, 512, verbose=False)
+            for pose, im in zip(("walk-1", "walk-2"), outs):
+                im.save(os.path.join(OUT, f"{t}-{pose}.png"), optimize=True, compress_level=9)
+            print(f"resliced {t}")
+        return
+
     tasks = []
     for t in types:
         for p in poses:

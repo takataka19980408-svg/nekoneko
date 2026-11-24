@@ -11,7 +11,7 @@
   const ASSET_V = '?v=20261124n';
   /* 横向きの歩き2コマ＋お見送り（rest）の手描き絵本風アセット */
   const WALK_DIR = 'assets/cats-walk/';
-  const WALK_V = '?v=20261125b';
+  const WALK_V = '?v=20261125c';
   const WALK_POSES = ['walk-1', 'walk-2', 'rest'];
   const TYPES = [
     'tabby', 'orange', 'black', 'white', 'calico', 'tuxedo', 'gray',

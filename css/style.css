@@ -918,7 +918,8 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
   height: 100%;
   object-fit: contain;
   opacity: 0;
-  transition: opacity .1s linear;
+  /* 2コマは交差させず、パッと切り替える（半透明で重なると二重写しに見える） */
+  transition: none;
   filter: drop-shadow(0 6px 3px rgba(80, 55, 35, .28));
   pointer-events: none;
   touch-action: pan-y;

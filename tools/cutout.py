@@ -135,7 +135,8 @@ def shrink_rgba(img, colors=256):
     return Image.merge("RGBA", (*q.split(), a))
 
 
-def cutout(path, size=512, tol=18, verbose=True):
+def prepare(path, tol=18):
+    """透過・穴埋め・フェザリング・色デコンタミネーションまで（切り出し前の実寸RGBA）。"""
     im = Image.open(path).convert("RGB")
     if max(im.size) > 1400:
         im = im.resize((1400, round(im.size[1] * 1400 / im.size[0])), Image.LANCZOS)
@@ -182,13 +183,14 @@ def cutout(path, size=512, tol=18, verbose=True):
     out_rgb = np.where(af > 0.02, dec, rgb)
 
     rgba = np.dstack([out_rgb, a * 255]).astype(np.uint8)
-    out = Image.fromarray(rgba, "RGBA")
+    return Image.fromarray(rgba, "RGBA")
 
-    bbox = out.split()[3].getbbox()
+
+def finish(out, bbox, size=512, pad=0.94, verbose=True):
+    """同じ矩形(bbox)で切り出して512に収める。2コマで同じbboxを渡すと拡大率が揃い、歩きがぶれない。"""
     if bbox:
         out = out.crop(bbox)
 
-    pad = 0.94
     target = int(size * pad)
     ow, oh = out.size
     scale = min(target / ow, target / oh)
@@ -216,9 +218,30 @@ def cutout(path, size=512, tol=18, verbose=True):
 
     if verbose:
         h2 = int((fin[:, :, 3] < 250).sum())
-        print(f"  bg={bg.tolist()}  innerHolesFilled={holes_before}px  translucentPx={h2}")
+        print(f"  translucentPx={h2}")
 
     return canvas
+
+
+def cutout(path, size=512, tol=18, verbose=True):
+    """1枚を透過して512x512に整える。"""
+    out = prepare(path, tol)
+    bbox = out.split()[3].getbbox()
+    return finish(out, bbox, size, verbose=verbose)
+
+
+def cutout_pair(paths, size=512, tol=18, verbose=True):
+    """2コマを「同じ切り出し矩形」で512に収める（フレーム間で大きさ・位置がぶれない）。
+
+    walk-1 と walk-2 は同じ猫の別ポーズなので、拡大率と接地位置を揃えないと
+    切り替えのたびに猫が伸び縮みして見える。
+    """
+    imgs = [prepare(p, tol) for p in paths]
+    boxes = [im.split()[3].getbbox() for im in imgs]
+    boxes = [b for b in boxes if b]
+    union = (min(b[0] for b in boxes), min(b[1] for b in boxes),
+             max(b[2] for b in boxes), max(b[3] for b in boxes))
+    return [finish(im, union, size, verbose=verbose) for im in imgs]
 
 
 def main():
