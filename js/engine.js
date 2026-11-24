@@ -777,7 +777,7 @@
     { key: 'warm', icon: '🔥', label: '冬の特等席', note: '暖かい場所は、ゆずれない', where: 'any', prio: 2, re: /暖房|ストーブ|こたつ|毛布|あったか/ },
     { key: 'sunspot', icon: '☀️', label: '日向の特等席', note: 'いちばん気持ちいい場所', where: 'any', prio: 2, re: /日だまり|日向|日なた/ },
     { key: 'vet', icon: '🩺', label: 'かかりつけの獣医', note: 'ちょっと苦手な、いい人', where: 'any', prio: 2, re: /獣医|病院|ワクチン|健康診断|注射/ },
-    { key: 'tower', icon: '🗼', label: '高いところの特等席', note: '上から見るのが好き', where: 'any', prio: 2, re: /キャットタワー|屋根|塀の上|木の上|高いところ/ },
+    { key: 'tower', icon: '🗼', label: '高いところの特等席', note: '上から見るのが好き', where: 'any', prio: 2, re: /キャットタワー|塀の上|木の上|高いところ|棚の上/ },
     { key: 'family', icon: '👪', label: '家族の笑い声', note: '帰る場所がある', where: 'home', prio: 2, re: /家族|飼い主|膝|抱き上げ/ },
     { key: 'friend', icon: '🐾', label: '仲良しの野良仲間', note: '寄り添って眠った夜', where: 'any', prio: 2, re: /仲間|きょうだい|寄り添|餌やり/ },
     { key: 'boss', icon: '👑', label: '路地裏のボス猫', note: 'この道は、おれのもの', where: 'out', prio: 5 },

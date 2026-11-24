@@ -2015,6 +2015,8 @@ body::before {
     radial-gradient(58% 42% at 82% 4%, rgba(214, 236, 255, .85) 0%, rgba(214, 236, 255, 0) 70%),
     linear-gradient(180deg, rgba(210, 232, 250, .5) 0%, rgba(226, 240, 252, .2) 46%, rgba(196, 216, 238, .18) 100%);
 }
+/* 夜の路地は、季節の光を控えめに（もともと暗い場面なので白っぽくしない） */
+.scene--alley + .stage-season { opacity: .3; }
 /* おうちの中の窓の景色も、季節で変わる */
 .scene--home.season--spring::before {
   background: linear-gradient(90deg, transparent 47%, #e6c39c 47% 52%, transparent 52%),

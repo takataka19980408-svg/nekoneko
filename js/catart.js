@@ -214,6 +214,7 @@
     const season = step && step.season;
     if (season && SEASON_PARTICLES[season]) {
       /* 室内・街中は季節の舞うものを主役に。屋外は季節＋その土地のしるしを混ぜる */
+      if (key === 'alley' && season === 'summer') return ['🎐', '✨', '🌙'];  /* 夜の路地に真昼の太陽は合わない */
       if (SEASON_SCENES[key]) return SEASON_PARTICLES[season];
       const base = PARTICLES[key] || PARTICLES.home;
       return SEASON_PARTICLES[season].slice(0, 2).concat(base.slice(0, 1));

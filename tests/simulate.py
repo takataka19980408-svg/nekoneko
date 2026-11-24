@@ -1160,6 +1160,8 @@ def main():
             if (st.kind === 'death') continue;
             var want = {spring: '🌸', summer: '☀️', autumn: '🍁', winter: '❄️'}[st.season];
             if (!want) continue;
+            /* 夜の路地の夏は、太陽ではなく風鈴・月 */
+            if (CATART.sceneKeyFor(cc, k) === 'alley' && st.season === 'summer') want = '🎐';
             if (CATART.particlesHTML(cc, k, false).indexOf(want) < 0) {
               out.seasonMissing[st.season] = (out.seasonMissing[st.season] || 0) + 1;
             }
