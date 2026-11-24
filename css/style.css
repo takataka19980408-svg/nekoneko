@@ -2789,6 +2789,15 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
   }
 }
 
+/* 画面の高さが低い端末（小さめのスマホ）では、お見送りの舞台を詰める */
+@media (max-height: 640px) {
+  .stage.is-farewell { height: 198px; }
+  .cat-art.is-rest { width: 52%; }
+  .farewell { padding: 10px 11px 10px; margin-top: 6px; }
+  .fw-words { margin-top: 6px; padding: 6px 9px; }
+  .fw-btn { margin-top: 8px; }
+}
+
 /* 小さい画面 */
 @media (max-width: 400px) {
   .app { padding-left: 12px; padding-right: 12px; }
