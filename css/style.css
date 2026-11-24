@@ -937,6 +937,9 @@ button, a, .primary, .walk-btn, .tab, .speed-btn, .auto-btn, .skip-btn,
    進化した瞬間から、正面・歩き2コマ・眠り姿がぜんぶ専用の絵に切り替わる。
    青いしっぽ・CSSの座布団・首輪の重ねがけはしない（絵自体が主役）。 */
 .cat-art.is-special .cat-img--special { opacity: 1; }
+/* 歩き（横向き）と最期の眠りでは、正面の専用イラストを引っ込める */
+.cat-art.is-special.is-side .cat-img--special,
+.cat-art.is-special.is-rest .cat-img--special { opacity: 0; }
 .cat-art.is-special .collar,
 .cat-still.is-special .collar { display: none; }
 .cat-art.is-special .cat-img--special { filter: drop-shadow(0 6px 3px rgba(80, 55, 35, .28)); }
