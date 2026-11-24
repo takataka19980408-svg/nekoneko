@@ -72,6 +72,26 @@ function clearTimeout(id){
     if (__timers[i].id === id) { __timers.splice(i, 1); return; }
   }
 }
+/* 歩き2コマの切り替え（setInterval）をテストで進めるためのスタブ */
+var __intervals = [];
+function setInterval(fn, ms){
+  __timerId++;
+  __intervals.push({id: __timerId, fn: fn, ms: ms || 0});
+  return __timerId;
+}
+function clearInterval(id){
+  for (var i = 0; i < __intervals.length; i++) {
+    if (__intervals[i].id === id) { __intervals.splice(i, 1); return; }
+  }
+}
+function __tickIntervals(n){
+  var ran = 0;
+  for (var k = 0; k < (n || 1); k++) {
+    var list = __intervals.slice();
+    for (var i = 0; i < list.length; i++) { list[i].fn(); ran++; }
+  }
+  return ran;
+}
 function __runTimers(maxMs){
   var ran = 0;
   while (ran < 4000) {
@@ -530,6 +550,34 @@ def main():
         return 1
     if total != 1:
         print("[NG] フィナーレで図鑑に登録されていない")
+        return 1
+    # 最期はまず「チーン…」のお見送り画面。フィナーレはまだ出さない。
+    if ctx.eval("document.getElementById('farewell').hidden"):
+        print("[NG] お見送り（チーン）画面が出ていない")
+        return 1
+    if not ctx.eval("document.getElementById('finale').hidden"):
+        print("[NG] お見送りを飛ばしてフィナーレが出ている")
+        return 1
+    fw = ctx.eval("document.getElementById('farewellBody').innerHTML")
+    if "静かに旅立ちました" not in fw or "享年" not in fw:
+        print("[NG] お見送り画面の文面が足りない", fw[:120])
+        return 1
+    if "undefined" in fw or "NaN" in fw:
+        print("[NG] お見送り画面に undefined/NaN")
+        return 1
+    if not ctx.eval("document.getElementById('storyScreen').classList.contains('is-farewell')"):
+        print("[NG] お見送り中も物語の操作が残っている")
+        return 1
+    if not ctx.eval("document.getElementById('catArt').classList.contains('is-rest')"):
+        print("[NG] お見送りで眠り姿（rest）になっていない")
+        return 1
+    # 「この猫生のきろくを見る」でフィナーレへ
+    if not ctx.eval("__handlers['fwBtn:click'] && __handlers['fwBtn:click'].length"):
+        print("[NG] きろくボタンのハンドラがない")
+        return 1
+    ctx.eval("__handlers['fwBtn:click'][0]()")
+    if not ctx.eval("document.getElementById('farewell').hidden"):
+        print("[NG] きろくを見たあともお見送りが残っている")
         return 1
     if ctx.eval("document.getElementById('finale').hidden"):
         print("[NG] フィナーレが表示されていない")
@@ -1086,6 +1134,65 @@ def main():
     skip_fin = ctx.eval("document.getElementById('finaleBody').innerHTML")
     if "享年" not in skip_fin:
         print("[NG] スキップ後のフィナーレに享年がない")
+        return 1
+    if ctx.eval("document.getElementById('farewell').hidden"):
+        print("[NG] スキップで最期まで飛んでもお見送り画面が出ない")
+        return 1
+
+    # --- 横向きの歩き2コマ（220〜280msでwalk-1 / walk-2を切り替える） ---
+    ctx.eval("__handlers['againBtn:click'][0](); __runTimers(100);")
+    walk = json.loads(ctx.eval(r"""
+      (function(){
+        var out = {};
+        out.html = String(document.getElementById('catActor').innerHTML);
+        out.hasW1 = out.html.indexOf('-walk-1.png') >= 0;
+        out.hasW2 = out.html.indexOf('-walk-2.png') >= 0;
+        out.hasRest = out.html.indexOf('-rest.png') >= 0;
+        out.allTypes = true;
+        var n1 = (out.html.match(/assets\/cats-walk\//g) || []).length;
+        out.imgs = n1;
+        CATAPP.setSpeed(1); out.ms1 = CATAPP.frameMs();
+        CATAPP.setSpeed(2); out.ms2 = CATAPP.frameMs();
+        CATAPP.setSpeed(1);
+        /* 歩き出すまでは正面のお座り、歩くと横向き */
+        out.frontBefore = !document.getElementById('catArt').classList.contains('is-side');
+        CATAPP.walk();
+        out.sideAfter = document.getElementById('catArt').classList.contains('is-side');
+        CATAPP.paintWalkFrame(1);
+        out.f1a = document.getElementById('catWalk1').classList.contains('is-on');
+        out.f1b = document.getElementById('catWalk2').classList.contains('is-on');
+        CATAPP.walkMotion();
+        __tickIntervals(1);
+        out.f2b = document.getElementById('catWalk2').classList.contains('is-on');
+        out.f2a = document.getElementById('catWalk1').classList.contains('is-on');
+        /* 止まると walk-1 で休む */
+        CATAPP.setSide(false);
+        out.stopA = document.getElementById('catWalk1').classList.contains('is-on');
+        out.stopB = document.getElementById('catWalk2').classList.contains('is-on');
+        return JSON.stringify(out);
+      })()
+    """))
+    print("歩き2コマ:", walk)
+    if not (walk["hasW1"] and walk["hasW2"] and walk["hasRest"]):
+        print("[NG] 横向きの歩き/眠り姿がステージに入っていない")
+        return 1
+    if walk["imgs"] < 3:
+        print("[NG] ステージの横向き画像が3枚未満")
+        return 1
+    if not (220 <= walk["ms1"] <= 280 and 220 <= walk["ms2"] <= 280):
+        print("[NG] 歩きコマの切り替え間隔が220〜280msでない:", walk["ms1"], walk["ms2"])
+        return 1
+    if not walk["frontBefore"] or not walk["sideAfter"]:
+        print("[NG] 歩き出しで横向きにならない/誕生前から横向き")
+        return 1
+    if not (walk["f1a"] and not walk["f1b"]):
+        print("[NG] walk-1 の初期表示が不正")
+        return 1
+    if not (walk["f2b"] and not walk["f2a"]):
+        print("[NG] 時間経過でwalk-2に切り替わらない")
+        return 1
+    if not (walk["stopA"] and not walk["stopB"]):
+        print("[NG] 止まってもwalk-1に戻らない")
         return 1
 
     # --- 連続30猫生（roll → skip）で例外が出ないか ---

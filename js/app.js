@@ -652,6 +652,32 @@
     <div class="dex-toast"><span class="dex-toast-icon">📖</span>転生猫図鑑に登録しました</div>`;
   }
 
+  /* ---------- 「チーン…」お見送り画面 ----------
+     最期の瞬間、フィナーレの成績表へいきなり飛ばず、静かな余韻を1クッションはさむ。
+     眠っている姿（rest）はステージ側に出すので、ここは言葉と灯り・花を担当する。 */
+  function buildFarewellHTML(cat) {
+    const lastIdx = Math.max(0, (cat.story || []).length - 1);
+    const step = cat.story[lastIdx] || {};
+    const persona = personalityOf(cat, lastIdx);
+    const words = step.text || cat.caption || '';
+    const form = cat.nekomata ? '🔮 百年の猫生を生ききった猫又'
+      : cat.maneki ? '🏮 お店の看板猫だった子'
+      : cat.bossCat ? '👑 この街のボス猫だった子' : '';
+    return `
+      <p class="fw-title"><b>${cat.name}</b>は、静かに旅立ちました</p>
+      <div class="fw-meta">
+        <span>${cat.region.flag} ${placeText(cat)}</span><i>｜</i>
+        <span>${cat.speciesName}</span><i>｜</i>
+        <span class="fw-age">享年 ${step.ageLabel || ageText(cat.ageYears)}</span>
+      </div>
+      ${words ? `<p class="fw-words">「${words}」</p>` : ''}
+      <div class="fw-chips">
+        ${persona.stage ? `<span class="fw-chip">${persona.icon} 育った気質：${persona.label}</span>` : '<span class="fw-chip is-seed">🌱 まだ子どものまま、旅立った</span>'}
+        ${cat.adopted ? '<span class="fw-chip">🔔 途中で家族の猫になった子</span>' : ''}
+        ${form ? `<span class="fw-chip is-form">${form}</span>` : ''}
+      </div>`;
+  }
+
   function shareText(cat) {
     const lines = [
       `【世界猫生ガチャ】${cat.name}`,
@@ -940,7 +966,8 @@
       albumId: null, albumFrom: null, albumFilter: 'all',
       shownPinch: false, cardURL: '', cardName: '',
       traceInit: false, traceKeys: {}, traceList: [], spoken: {}, walkTimer: null,
-      trotting: false, trailTimer: null, trailN: 0
+      trotting: false, trailTimer: null, trailN: 0,
+      walkFrame: 1, frameTimer: null, walkBurst: null, side: false, finaleOpen: false
     };
 
     const el = {
@@ -964,6 +991,7 @@
       lifeAge: $('lifeAge'), lifeSeason: $('lifeSeason'), lifeMarks: $('lifeMarks'),
       traceShelf: $('traceShelf'),
       stagePinch: $('stagePinch'), stageAlert: $('stageAlert'),
+      farewell: $('farewell'), farewellBody: $('farewellBody'), fwBtn: $('fwBtn'),
       cardBtn: $('cardBtn'), cardModal: $('cardModal'), cardImg: $('cardImg'), cardPreview: $('cardPreview'),
       cardDownload: $('cardDownload'), cardShare: $('cardShare'), cardNative: $('cardNative'), closeCard: $('closeCard')
     };
@@ -1062,6 +1090,41 @@
       t(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 1500);
     }
 
+    /* --- 横向きの歩き2コマ（220〜280msで交互に切り替え） --- */
+    function paintWalkFrame(n) {
+      state.walkFrame = n === 2 ? 2 : 1;
+      const a = document.getElementById('catWalk1');
+      const b = document.getElementById('catWalk2');
+      if (a && a.classList) a.classList.toggle('is-on', state.walkFrame === 1);
+      if (b && b.classList) b.classList.toggle('is-on', state.walkFrame === 2);
+    }
+
+    function frameMs() { return state.speed === 2 ? 220 : 250; }
+
+    function startWalkFrames() {
+      if (state.frameTimer) return;
+      if (typeof root.setInterval !== 'function') return;
+      state.frameTimer = root.setInterval(function () {
+        paintWalkFrame(state.walkFrame === 1 ? 2 : 1);
+      }, frameMs());
+    }
+
+    function stopWalkFrames() {
+      if (state.frameTimer && typeof root.clearInterval === 'function') root.clearInterval(state.frameTimer);
+      state.frameTimer = null;
+      paintWalkFrame(1);
+    }
+
+    /* 横向き（歩き）の姿にするか、正面のお座り（誕生前・最期）にするか */
+    function setSide(on) {
+      const want = !!on;
+      if (state.side === want) return;
+      state.side = want;
+      const art = document.getElementById('catArt');
+      if (art && art.classList) art.classList.toggle('is-side', want);
+      if (!want) stopWalkFrames();
+    }
+
     /* --- オート中は歩き続ける（トコトコ・背景・足あと） --- */
     function startTrail() {
       if (state.trailTimer) return;
@@ -1085,8 +1148,12 @@
       const art = document.getElementById('catArt');
       if (el.catStage && el.catStage.classList) el.catStage.classList.toggle('is-trotting', want);
       if (art && art.classList) art.classList.toggle('is-trotting', want);
-      if (want) startTrail();
-      else { stopTrail(); if (el.stageTrail) el.stageTrail.innerHTML = ''; }
+      if (want) { startTrail(); startWalkFrames(); }
+      else {
+        stopTrail();
+        if (el.stageTrail) el.stageTrail.innerHTML = '';
+        if (!state.walkBurst) stopWalkFrames();
+      }
     }
 
     /* --- 1歩分のトコトコ歩き＋背景スクロール --- */
@@ -1105,7 +1172,15 @@
         void art.offsetWidth;
         art.classList.add('is-walking');
       }
+      /* 1歩ぶんは2コマを交互に見せてから、walk-1で止まる */
+      setSide(state.started && !state.dead);
+      startWalkFrames();
       const t = root.setTimeout || setTimeout;
+      if (state.walkBurst) clearTimeout(state.walkBurst);
+      state.walkBurst = t(function () {
+        state.walkBurst = null;
+        if (!state.trotting) stopWalkFrames();
+      }, 1400);
       if (state.walkTimer) clearTimeout(state.walkTimer);
       state.walkTimer = t(function () {
         if (scene && scene.classList) scene.classList.remove('is-walking');
@@ -1166,8 +1241,15 @@
       setTrot(false);
       if (el.stageTrail) el.stageTrail.innerHTML = '';
       el.catActor.innerHTML = A.actorHTML(cat, { stage: 'kitten' });
+      const fresh = document.getElementById('catArt');
+      if (fresh && fresh.classList) { fresh.classList.remove('is-side'); fresh.classList.remove('is-rest'); }
       el.catStage.classList.remove('is-finale');
       el.catStage.classList.remove('is-pinch');
+      state.side = false;
+      state.walkFrame = 1;
+      if (state.frameTimer && typeof root.clearInterval === 'function') root.clearInterval(state.frameTimer);
+      state.frameTimer = null;
+      if (state.walkBurst) { (root.clearTimeout || clearTimeout)(state.walkBurst); state.walkBurst = null; }
       if (el.stageAlert) { el.stageAlert.textContent = ''; el.stageAlert.hidden = true; el.stageAlert.className = 'stage-alert'; }
       el.stats.innerHTML = A.statsHTML(cat, 0);
       el.tapHint.hidden = false;
@@ -1184,7 +1266,11 @@
         art.classList.toggle('is-adult', stage !== 'kitten');
         art.classList.toggle('is-senior', stage === 'senior');
         art.classList.toggle('is-hop', false);
+        /* 最期は横向きの歩きをやめて、眠っている姿に */
+        art.classList.toggle('is-rest', dead);
       }
+      state.dead = !!dead;
+      setSide(state.started && !dead);
       const imgK = document.getElementById('catImgKitten');
       const imgA = document.getElementById('catImgAdult');
       if (imgK && imgA) {
@@ -1508,7 +1594,10 @@
       /* オートで進んでいる間は、止まって見えないよう歩き続ける */
       setTrot(!!(state.started && state.auto && !needChoice && !isDeath && !autoBlocked()));
 
-      el.finale.hidden = !isDeath;
+      el.finale.hidden = !(isDeath && state.finaleOpen);
+      const showFarewell = isDeath && !state.finaleOpen;
+      if (el.farewell) el.farewell.hidden = !showFarewell;
+      if (el.story) el.story.classList.toggle('is-farewell', showFarewell);
       if (isDeath) {
         if (!state.recorded) {
           record(state.dex, cat);
@@ -1517,11 +1606,14 @@
           refreshStats();
         }
         el.finaleBody.innerHTML = buildFinaleHTML(cat, state.newAch, state.dex);
+        if (showFarewell && el.farewellBody) el.farewellBody.innerHTML = buildFarewellHTML(cat);
       } else {
+        state.finaleOpen = false;
         el.finaleBody.innerHTML = '';
+        if (el.farewellBody) el.farewellBody.innerHTML = '';
       }
 
-      el.memories.hidden = idx === 0;
+      el.memories.hidden = idx === 0 || showFarewell;
       el.memoryList.innerHTML = memoryHTML(cat, idx, state.picked);
       if (needChoice) startChoiceClock();
       else { stopChoiceClock(); state.choiceLeft = null; hideChoiceClock(); }
@@ -1542,6 +1634,7 @@
       state.rulerKey = null;
       state.choiceLeft = null;
       state.autoPicked = false;
+      state.finaleOpen = false;
       stopChoiceClock();
       state.adopted = false;
       state.shownStage = null;
@@ -1621,6 +1714,10 @@
     function backHome() {
       clearAuto();
       setTrot(false);
+      stopWalkFrames();
+      state.walkBurst && (root.clearTimeout || clearTimeout)(state.walkBurst);
+      state.walkBurst = null;
+      state.finaleOpen = false;
       stopChoiceClock();
       state.choiceLeft = null;
       el.story.hidden = true;
@@ -1634,6 +1731,22 @@
 
     el.walkBtn.addEventListener('click', walk);
     el.skipBtn.addEventListener('click', skipAll);
+    /* お見送り（チーン）→ フィナーレ（この猫生のきろく） */
+    function openFinale() {
+      const cat = state.current;
+      if (!cat) return;
+      const last = cat.story[cat.story.length - 1];
+      if (!last || last.kind !== 'death') return;
+      state.finaleOpen = true;
+      renderStory();
+      const t = root.setTimeout || setTimeout;
+      t(function () {
+        if (el.finale && el.finale.scrollIntoView) {
+          try { el.finale.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { el.finale.scrollIntoView(); }
+        }
+      }, 60);
+    }
+    if (el.fwBtn) el.fwBtn.addEventListener('click', openFinale);
     el.pageWrap.addEventListener('click', (ev) => {
       const t = ev.target;
       const btn = t && t.closest ? t.closest('[data-choice]') : null;
@@ -1917,10 +2030,15 @@
     root.CATAPP.closeCard = closeCard;
     root.CATAPP.albumShareURL = albumShareURL;
     root.CATAPP.findAlbum = findAlbum;
+    root.CATAPP.openFinale = openFinale;
+    root.CATAPP.setSide = setSide;
+    root.CATAPP.paintWalkFrame = paintWalkFrame;
+    root.CATAPP.frameMs = frameMs;
   }
 
   root.CATAPP = Object.assign(root.CATAPP || {}, {
     buildStepHTML: stepCardHTML, buildFinaleHTML, buildDexHTML, shareText, shareURL,
+    buildFarewellHTML,
     achievement, record, unlockAchievements, loadDex, emptyDex, eyeName, bornLine,
     nameplateHTML, profileHTML, rareCardHTML, eyeText, progressHTML,
     personalityOf, TOTAL_TARGETS, CATALOG, formAt, achBurstHTML,

@@ -9,6 +9,10 @@
   const ASSET_DIR = 'assets/cats/';
   /* 画像キャッシュ対策。画像を差し替えたらここも上げる（?v= が付いたURLで読む） */
   const ASSET_V = '?v=20261124n';
+  /* 横向きの歩き2コマ＋お見送り（rest）の手描き絵本風アセット */
+  const WALK_DIR = 'assets/cats-walk/';
+  const WALK_V = '?v=20261125b';
+  const WALK_POSES = ['walk-1', 'walk-2', 'rest'];
   const TYPES = [
     'tabby', 'orange', 'black', 'white', 'calico', 'tuxedo', 'gray',
     'siamese', 'fluffy', 'lion', 'tiger', 'leopard', 'wildcat', 'scottish',
@@ -150,6 +154,16 @@
 
   function assetPath(cat, stage) {
     return imgPath(typeFor(cat), stage);
+  }
+
+  /* 歩き2コマ・眠り姿（assets/cats-walk） */
+  function walkPath(type, pose) {
+    const p = WALK_POSES.indexOf(pose) >= 0 ? pose : 'walk-1';
+    return WALK_DIR + (type || 'tabby') + '-' + p + '.png' + WALK_V;
+  }
+
+  function walkPathFor(cat, pose) {
+    return walkPath(typeFor(cat), pose);
   }
 
   /* ---------- 場面 ---------- */
@@ -466,6 +480,11 @@
         <span class="maneki-koban k2" aria-hidden="true">🪙</span>
         <img class="cat-img cat-img--kitten ${kittenOn ? 'is-on' : ''}" id="catImgKitten" src="${imgPath(t, 'kitten')}" alt="${escapeAttr(alt)}の子猫" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
         <img class="cat-img cat-img--adult ${kittenOn ? '' : 'is-on'}" id="catImgAdult" src="${imgPath(t, 'adult')}" alt="${escapeAttr(alt)}の成猫" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+        <div class="cat-walk" id="catWalk" aria-hidden="true">
+          <img class="cat-walk-img is-on" id="catWalk1" src="${walkPath(t, 'walk-1')}" alt="" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+          <img class="cat-walk-img" id="catWalk2" src="${walkPath(t, 'walk-2')}" alt="" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
+        </div>
+        <img class="cat-rest-img" id="catRest" src="${walkPath(t, 'rest')}" alt="${escapeAttr(alt)}が静かに眠っている姿" draggable="false" decoding="async" onerror="this.onerror=null;this.src=this.src.split('?')[0]">
         ${collarHTML()}
         <span class="cat-breath" aria-hidden="true"></span>
         <span class="growth-spark" aria-hidden="true">✨</span>
@@ -515,8 +534,9 @@
   }
 
   const api = {
-    ASSET_DIR, ASSET_V, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
+    ASSET_DIR, ASSET_V, WALK_DIR, WALK_V, WALK_POSES, TYPES, WILD_MAP, COAT_MAP, BREED_MAP,
     typeFor, shapeType, assetPath, imgPath, assetStage, patternType, colorFamily,
+    walkPath, walkPathFor,
     sceneKeyFor, sceneLabel, sceneClassOf, particlesFor, particlesHTML,
     statsFor, statsHTML, bubbleFor, speechFor, TRAIT_LINES, BOSS_LINES,
     collarHTML, actorHTML, stillHTML, heroHTML,

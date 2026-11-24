@@ -276,6 +276,63 @@ def main():
     print(f"  不透明部分の割合: 最小 {min(covers):.2f} / 最大 {max(covers):.2f}")
     check(not bad_alpha, f"透過/サイズの異常: {bad_alpha}")
 
+    # ---- 横向きの歩き2コマ＋お見送り姿（33タイプ×3ポーズ＝99枚） ----
+    print("\n--- 歩き2コマ＋眠り姿のアセット ---")
+    walk_dir = ROOT / "assets" / "cats-walk"
+    poses = ("walk-1", "walk-2", "rest")
+    want = [f"{t}-{p}.png" for t in types for p in poses]
+    have = sorted(p.name for p in walk_dir.glob("*.png")) if walk_dir.exists() else []
+    missing_walk = [f for f in want if f not in have]
+    extra_walk = [f for f in have if f not in want]
+    walk_bytes = {f: (walk_dir / f).stat().st_size for f in want if (walk_dir / f).exists()}
+    print(f"  画像ファイル: {len(want) - len(missing_walk)}/{len(want)} 枚 / 合計 {sum(walk_bytes.values())/1024/1024:.2f}MB")
+    check(not missing_walk, f"歩き/眠り姿が欠けている: {missing_walk[:6]}")
+    check(not extra_walk, f"余分な画像がある: {extra_walk[:6]}")
+    check(sum(walk_bytes.values()) < 30 * 1024 * 1024, "歩き/眠り姿の画像が重すぎる（合計30MB超）")
+    heavy_walk = [f for f, b in walk_bytes.items() if b > 420 * 1024]
+    check(not heavy_walk, f"1枚が重すぎるPNG: {heavy_walk[:5]}")
+
+    bad_walk = []
+    walk_covers = []
+    for f in want:
+        p = walk_dir / f
+        if not p.exists():
+            continue
+        ok, msg, info = check_assets.check_image(str(p), min_cover=0.06)
+        walk_covers.append(info["cover"])
+        if not ok:
+            bad_walk.append(f"{f}: {msg}")
+    if walk_covers:
+        print(f"  不透明部分の割合: 最小 {min(walk_covers):.2f} / 最大 {max(walk_covers):.2f}")
+    check(not bad_walk, f"歩き/眠り姿の透過・サイズ異常: {bad_walk[:5]}")
+
+    # 2コマが同じポーズになっていないか（脚の帯のシルエット差で見る）
+    import numpy as _np
+
+    def _leg_mask(path):
+        a = _np.asarray(Image.open(path).convert("RGBA"))[:, :, 3]
+        bb = Image.fromarray(a).getbbox()
+        if not bb:
+            return None
+        a = a[bb[1]:bb[3], bb[0]:bb[2]]
+        return _np.asarray(Image.fromarray(a).resize((240, 160), Image.LANCZOS)) > 128
+
+    same_pose = []
+    diffs = []
+    for t in types:
+        a = _leg_mask(str(walk_dir / f"{t}-walk-1.png"))
+        b = _leg_mask(str(walk_dir / f"{t}-walk-2.png"))
+        if a is None or b is None:
+            same_pose.append(f"{t}:空の画像")
+            continue
+        d = float((a[90:160] != b[90:160]).mean())
+        diffs.append(d)
+        if d < 0.12:
+            same_pose.append(f"{t}:{d:.2f}")
+    if diffs:
+        print(f"  2コマの脚の違い: 最小 {min(diffs):.2f} / 平均 {sum(diffs)/len(diffs):.2f}")
+    check(not same_pose, f"walk-1とwalk-2がほぼ同じポーズ: {same_pose[:5]}")
+
     # ---- 首輪の位置（全66枚で首元にピタッと乗っているか） ----
     print("\n--- 首輪の位置 ---")
     collar = json.loads(ctx.eval("JSON.stringify(CATART.COLLAR)"))
@@ -1089,6 +1146,7 @@ def main():
           traceBad: [], traceOver: 0, dupTrace: 0, determinism: 0, birthTrace: 0,
           stageChanged: 0, longStage0: 0, bossCats: 0, bossNoTrace: 0, bossNoWord: 0,
           finaleOk: 0, finaleBad: [], albumOk: 0, albumBad: [], cardBad: [],
+          farewellOk: 0, farewellBad: [],
           maxTraces: 0, minTraces: 99, traceKeys: {}, seasonMissing: {}, back: 0, saw1: 0
         };
         for (var i = 0; i < 600; i++) {
@@ -1141,6 +1199,11 @@ def main():
           var fin = CATAPP.buildFinaleHTML(c, [], {ach: {}});
           if (fin.indexOf('気質') >= 0 && fin.indexOf('undefined') < 0 && fin.indexOf('NaN') < 0) out.finaleOk++;
           else out.finaleBad.push(c.name);
+          /* チーン…お見送り画面：名前・享年・最期のひとこと・気質 */
+          var fw = CATAPP.buildFarewellHTML(c);
+          if (fw.indexOf(String(c.name) + '</b>は、静かに旅立ちました') >= 0
+              && fw.indexOf('享年') >= 0 && fw.indexOf('undefined') < 0 && fw.indexOf('NaN') < 0) out.farewellOk++;
+          else out.farewellBad.push(c.name);
           var rec = CATAPP.albumEntry(c);
           var wantLabel = p.stage ? p.label : (Number(c.ageYears) >= 2 ? 'どこにも寄らない自由な猫' : 'これから育つ');
           if (rec.persona && rec.persona.label === wantLabel
@@ -1180,6 +1243,7 @@ def main():
     print(f"  痕跡: ひと猫生 {grow['minTraces']}〜{grow['maxTraces']}個 / 種類 {len(grow['traceKeysList'])}種")
     print(f"  ボス猫 {grow['bossCats']}匹（痕跡なし {grow['bossNoTrace']} / 気質なし {grow['bossNoWord']}）")
     print(f"  フィナーレ反映 {grow['finaleOk']}/{n} ・ 記録反映 {grow['albumOk']}/{n}")
+    print(f"  お見送り（チーン）反映 {grow['farewellOk']}/{n}")
     print(f"  季節の舞うものの欠け: {grow['seasonMissing'] or 'なし'}")
     check(grow["stage0AtBirth"] == n, "誕生直後が「これから育つ」になっていない猫がいる")
     check(not grow["badLabel"], f"気質の呼び名が不正: {grow['badLabel'][:3]}")
@@ -1199,6 +1263,7 @@ def main():
     check(grow["bossCats"] > 0, "ボス猫が1匹も出ない")
     check(grow["bossNoTrace"] == 0 and grow["bossNoWord"] == 0, "ボス猫に痕跡/気質が付かない")
     check(grow["finaleOk"] == n, f"フィナーレに気質が出ない: {grow['finaleBad'][:3]}")
+    check(grow["farewellOk"] == n, f"お見送り画面の文面が壊れている: {grow['farewellBad'][:3]}")
     check(grow["albumOk"] == n, f"過去の猫生に気質/痕跡が残らない: {grow['albumBad'][:3]}")
     check(not grow["cardBad"], f"カードデータに気質/痕跡の不備: {grow['cardBad'][:3]}")
     check(not grow["seasonMissing"], f"季節の舞うものが切り替わらない: {grow['seasonMissing']}")
